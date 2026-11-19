@@ -1,31 +1,14 @@
 'use strict';
 /* FahrenHack UI: one page for the desktop window (console style, gamepad + keyboard) and for phones. */
 
-// ---------------------------------------------------------------- helpers
-const $ = (s, el = document) => el.querySelector(s);
-const $$ = (s, el = document) => [...el.querySelectorAll(s)];
-const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-const plural = (n, one, few, many) => {
-  const a = Math.abs(n) % 100, b = a % 10;
-  return a > 10 && a < 20 ? many : b === 1 ? one : b >= 2 && b <= 4 ? few : many;
-};
-const fmtNum = v => {
-  if (v === null || v === undefined || v === '') return '';
-  const s = String(v);
-  return /^-?\d+$/.test(s) ? Number(s).toLocaleString('ru-RU') : s;
-};
-const VTYPES = [['i32', 'Целое, 4 байта'], ['i64', 'Целое, 8 байт'], ['f32', 'Дробное, 4 байта'], ['f64', 'Дробное, 8 байт']];
-const vtypeOptions = sel => VTYPES.map(([v, l]) => `<option value="${v}"${v === sel ? ' selected' : ''}>${l}</option>`).join('');
+import { createApiClient } from '/ui/api.js';
+import { renderCheatList } from '/ui/cheat-list.js';
+import { $, $$, esc, fmtNum, icon, patchHtml, plural, vtypeOptions } from '/ui/view-helpers.js';
+
 const TABS = ['home', 'scanner', 'remote', 'settings'];
 const tabOf = v => (v === 'game' ? 'home' : v);
 
 const Q = new URLSearchParams(location.search);
-let TOKEN = Q.get('t') || '';
-try {
-  if (TOKEN) localStorage.setItem('fh-token', TOKEN);
-  else TOKEN = localStorage.getItem('fh-token') || '';
-} catch (e) { /* storage can be blocked */ }
 const DESKTOP = Q.has('desktop');
 document.body.classList.toggle('desktop', DESKTOP);
 // Message to the desktop window (drag, min, max, fullscreen, close). wry defines window.ipc
@@ -35,36 +18,9 @@ const host = msg => { try { if (window.ipc) window.ipc.postMessage(msg); } catch
 
 const S = { st: null, games: [], view: 'home', params: {}, stack: [], sel: 0, pad: false, online: true, authFail: false };
 
-// ---------------------------------------------------------------- server
-async function api(path, method = 'GET', body) {
-  const opt = { method, headers: { 'x-token': TOKEN } };
-  if (body !== undefined) {
-    opt.headers['content-type'] = 'application/json';
-    opt.body = JSON.stringify(body);
-  }
-  const r = await fetch('/api' + path, opt);
-  const text = await r.text();
-  if (r.status === 401) S.authFail = true;
-  if (!r.ok) throw new Error(text || 'Ошибка ' + r.status);
-  return text ? JSON.parse(text) : null;
-}
-const artUrl = (g, kind) => `/api/art/${encodeURIComponent(g)}/${kind}?t=${encodeURIComponent(TOKEN)}`;
-
-/** Starts a server job and waits for it, reporting progress. */
-async function runJob(start, onTick) {
-  const { job } = await start;
-  for (;;) {
-    await sleep(170);
-    let j = null;
-    try { j = await api('/job'); } catch (e) { continue; }
-    if (!j || j.id !== job) continue;
-    if (onTick) onTick(j);
-    if (j.done) {
-      if (j.error) throw new Error(j.error);
-      return j.result;
-    }
-  }
-}
+const { api, artUrl, qrUrl, runJob, setToken } = createApiClient(Q.get('t'), () => {
+  S.authFail = true;
+});
 
 async function act(fn, okMsg) {
   try {
@@ -105,47 +61,6 @@ function sfx(kind) {
     o.start(t);
     o.stop(t + dur + 0.08);
   } catch (e) { /* sound is optional */ }
-}
-
-// ---------------------------------------------------------------- icons
-const ICONS = {
-  heart: '<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>',
-  ammo: '<path d="M6 21V9.5a2 2 0 0 1 4 0V21M14 21V9.5a2 2 0 0 1 4 0V21M4 21h16M6 13h4M14 13h4"/>',
-  coin: '<circle cx="12" cy="12" r="8"/><path d="M14.5 9.3c-.5-.8-1.4-1.3-2.5-1.3-1.5 0-2.5.8-2.5 1.9 0 2.6 5 1.3 5 4 0 1.1-1 1.9-2.5 1.9-1.1 0-2-.5-2.5-1.3M12 6.5V8M12 16v1.5"/>',
-  gem: '<path d="M7 4h10l4 5-9 11L3 9z"/><path d="M3 9h18M12 20 9 9l3-5 3 5z"/>',
-  knife: '<path d="M14.5 4.5 20 2l-2.5 5.5L8 17l-3-3z"/><path d="m5 14-2 2 3 3 2-2"/>',
-  star: '<path d="m12 3.5 2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/>',
-  bolt: '<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>',
-  dots: '<circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/>',
-  play: '<path d="M7 4.5v15l12-7.5z"/>',
-  plus: '<path d="M12 5v14M5 12h14"/>',
-  games: '<rect x="3" y="7" width="18" height="11" rx="5"/><path d="M8 10.5v4M6 12.5h4M15.5 12h.01M18 14h.01"/>',
-  scan: '<circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/>',
-  phone: '<rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/>',
-  power: '<path d="M12 3v8M6.3 6.8a8 8 0 1 0 11.4 0"/>',
-  check: '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
-  folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
-  refresh: '<path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/>',
-  wifi: '<path d="M2.5 9a14 14 0 0 1 19 0M5.5 12.5a9.5 9.5 0 0 1 13 0M8.8 16a5 5 0 0 1 6.4 0"/><circle cx="12" cy="19.2" r=".9"/>',
-};
-const icon = (name, cls = '') => `<svg class="ic ${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name] || ICONS.star}</svg>`;
-
-// ---------------------------------------------------------------- DOM patching (keeps focus)
-function patchHtml(el, html) {
-  if (!el || el._html === html) return;
-  const a = document.activeElement;
-  const key = a && el.contains(a) ? a.dataset.k : null;
-  setHtml(el, html);
-  if (key) {
-    const n = el.querySelector(`[data-k="${CSS.escape(key)}"]`);
-    if (n) n.focus({ preventScroll: true });
-  }
-}
-
-/** Sets innerHTML and remembers it, so later patchHtml calls skip identical content. */
-function setHtml(el, html) {
-  el.innerHTML = html;
-  el._html = html;
 }
 
 // ---------------------------------------------------------------- focus & navigation
@@ -403,91 +318,6 @@ function viewedGame() {
   return null;
 }
 
-/** Parts of a cheat row. Rows stay in the DOM and only changed parts are patched,
- *  so a click is never lost to a re-render (values like HP change every second). */
-function cheatParts(c) {
-  const id = esc(c.id), k = 'c-' + id;
-  let ctl;
-  switch (c.status) {
-    case 'ready':
-      ctl = c.kind === 'set'
-        ? `<button class="btn sm primary" data-act="toggle" data-id="${id}" data-k="${k}-go">Применить</button>`
-        : `<button class="switch${c.active ? ' on' : ''}" role="switch" aria-checked="${!!c.active}" aria-label="${esc(c.name)}" data-act="toggle" data-id="${id}" data-k="${k}-go"></button>`;
-      break;
-    case 'calibrate':
-      ctl = `<button class="btn sm outline" data-act="calibrate" data-id="${id}" data-k="${k}-go">${icon('scan')}Настроить</button>`;
-      break;
-    case 'waiting':
-      ctl = '<span class="chip warn" title="Указатель пока пуст: загрузите сохранение">Войдите в игру</span>';
-      break;
-    case 'missing':
-      ctl = '<span class="chip warn">Не для этой версии</span>';
-      break;
-    case 'nogame':
-      ctl = '<span class="chip">Запустите игру</span>';
-      break;
-    default:
-      ctl = '<span class="chip warn">Ошибка профиля</span>';
-  }
-  const meta = [];
-  if (c.hotkey) meta.push(`<span class="key">${esc(c.hotkey)}</span>`);
-  if (c.kind === 'set') meta.push(`<span class="chip sm">Значение: <b>${esc(fmtNum(c.value) || '—')}</b></span>`);
-  else if (c.kind === 'freeze') meta.push(`<span class="chip sm">${c.value ? 'Держать: <b>' + esc(fmtNum(c.value)) + '</b>' : 'Держит текущее'}</span>`);
-  if (c.current !== null && c.current !== undefined) meta.push(`<span class="chip sm">Сейчас: <b>${esc(fmtNum(c.current))}</b></span>`);
-  if (c.experimental) meta.push('<span class="chip sm warn">Экспериментально</span>');
-  const cal = c.calibration;
-  if (cal && c.status === 'ready') {
-    if (cal.chains > 0) meta.push(`<span class="chip sm teal" title="Цепочек указателей: ${cal.chains}">${icon('check')}Сохранено</span>`);
-    else if (cal.session) meta.push('<span class="chip sm warn" title="Постоянный адрес не найден">До перезапуска игры</span>');
-  }
-  return {
-    cls: `cheat${c.active ? ' on' : ''}${c.status !== 'ready' ? ' idle' : ''}`,
-    icon: icon(c.icon),
-    head: `<div class="cname">${esc(c.name)}</div>${c.description ? `<div class="cdesc">${esc(c.description)}</div>` : ''}`,
-    meta: meta.join(''),
-    ctl,
-  };
-}
-
-const ROW_PARTS = [['.cico', 'icon'], ['.chead', 'head'], ['.cmeta', 'meta'], ['.cctl', 'ctl']];
-
-function cheatRowHtml(c, p) {
-  const id = esc(c.id);
-  return `<div class="${p.cls}" data-row="${id}">
-    <div class="cico">${p.icon}</div>
-    <div class="cmain"><div class="chead">${p.head}</div><div class="cmeta">${p.meta}</div></div>
-    <div class="cctl">${p.ctl}</div>
-    <button class="more" data-act="cheat-menu" data-id="${id}" data-k="c-${id}-more" title="Параметры">${icon('dots')}</button>
-  </div>`;
-}
-
-function renderCheatList(box, list) {
-  const keys = list.map(c => (c.category || 'Читы') + '\u0001' + c.id).join('\u0002');
-  const parts = list.map(cheatParts);
-  if (box._keys !== keys) {
-    let html = '', cat = null;
-    list.forEach((c, i) => {
-      const k = c.category || 'Читы';
-      if (k !== cat) { cat = k; html += `<div class="cat">${esc(k)}</div>`; }
-      html += cheatRowHtml(c, parts[i]);
-    });
-    patchHtml(box, html);
-    box._keys = keys;
-    list.forEach((c, i) => {
-      const row = box.querySelector(`[data-row="${CSS.escape(c.id)}"]`);
-      if (row) for (const [sel, key] of ROW_PARTS) row.querySelector(sel)._html = parts[i][key];
-    });
-    return;
-  }
-  list.forEach((c, i) => {
-    const row = box.querySelector(`[data-row="${CSS.escape(c.id)}"]`);
-    if (!row) return;
-    const p = parts[i];
-    if (row.className !== p.cls) row.className = p.cls;
-    for (const [sel, key] of ROW_PARTS) patchHtml(row.querySelector(sel), p[key]);
-  });
-}
-
 views.game = {
   render() {
     const g = viewedGame();
@@ -538,14 +368,10 @@ views.game = {
     }
     patchHtml($('#procbox'), pb);
     const list = live ? S.st.cheats : g.cheats.map(c => Object.assign({}, c, { status: 'nogame' }));
-    if (!list.length) {
-      box._keys = null;
-      patchHtml(box, `<div class="panel empty">${g.known === false
-        ? 'Своих читов пока нет. Найдите значение во вкладке «Сканер» и нажмите «В читы».'
-        : 'В профиле нет читов.'}</div>`);
-      return;
-    }
-    renderCheatList(box, list);
+    const emptyMessage = g.known === false
+      ? 'Своих читов пока нет. Найдите значение во вкладке «Сканер» и нажмите «В читы».'
+      : 'В профиле нет читов.';
+    renderCheatList(box, list, emptyMessage);
   },
 };
 
@@ -653,7 +479,7 @@ views.remote = {
       return;
     }
     const url = st.lan_url;
-    patchHtml(box, `<div class="panel qrbox"><img class="qr" alt="QR-код для телефона" src="/api/qr?t=${encodeURIComponent(TOKEN)}&v=${encodeURIComponent(url)}"><div class="mono url">${esc(url)}</div></div>
+    patchHtml(box, `<div class="panel qrbox"><img class="qr" alt="QR-код для телефона" src="${qrUrl(url)}"><div class="mono url">${esc(url)}</div></div>
       <div class="rtext"><div class="eyebrow">Пульт включён</div><h2>Отсканируйте QR-код</h2>
         <ol class="tips big"><li>Подключите телефон к той же сети Wi-Fi, что и компьютер.</li><li>Наведите камеру телефона на QR-код и откройте ссылку.</li><li>Включайте читы с телефона, не сворачивая игру.</li></ol>
         <p class="dim">Не открывается? Разрешите FahrenHack в брандмауэре Windows для частных сетей. Ссылка содержит ключ: не публикуйте её.</p>
@@ -1111,8 +937,7 @@ const ACTIONS = Object.assign({
     if (!confirm('Создать новый ключ? Старые ссылки на телефонах перестанут работать.')) return;
     const r = await act(() => api('/token/reset', 'POST'));
     if (r) {
-      TOKEN = r.token;
-      try { localStorage.setItem('fh-token', TOKEN); } catch (e) { /* ignore */ }
+      setToken(r.token);
       toast('Ключ обновлён: отсканируйте новый QR-код');
       refresh();
     }

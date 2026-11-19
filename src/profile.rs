@@ -12,7 +12,10 @@ use serde::{Deserialize, Serialize};
 use crate::pointer::{self, Chain};
 use crate::scan::VType;
 
-const BUILTIN: &[(&str, &str)] = &[("re4r.json", include_str!("../games/re4r.json"))];
+const BUILTIN: &[(&str, &str)] = &[
+    ("re4r.json", include_str!("../games/re4r.json")),
+    ("schedule1.json", include_str!("../games/schedule1.json")),
+];
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct GameProfile {
