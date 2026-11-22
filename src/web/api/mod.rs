@@ -32,6 +32,9 @@ pub(super) fn router(app: Shared) -> Router<Shared> {
         .route("/detach", post(detach))
         .route("/cheats/off", post(all_off))
         .route("/cheats/{id}/toggle", post(toggle))
+        .route("/cheats/{id}/value", post(set_value))
+        .route("/cheats/{id}/step", post(step))
+        .route("/games/{gid}/cheats/{cid}/pin", post(pin))
         .route("/cheats/{id}/calibration", delete(reset_calibration))
         .route("/calib/{id}/bind", post(bind))
         .route("/custom", post(add_custom))
@@ -118,6 +121,9 @@ struct CheatSettings {
     value: String,
     #[serde(default)]
     hotkey: String,
+    /// Absent = keep; "" = no second hotkey.
+    #[serde(default)]
+    hotkey_down: Option<String>,
 }
 
 async fn set_cheat_settings(
@@ -126,9 +132,38 @@ async fn set_cheat_settings(
     Json(b): Json<CheatSettings>,
 ) -> ApiResult {
     lock(&app)
-        .set_override(&gid, &cid, b.value, b.hotkey)
+        .set_override(&gid, &cid, b.value, b.hotkey, b.hotkey_down)
         .map_err(bad)?;
     ok()
+}
+
+#[derive(Deserialize)]
+struct ValueReq {
+    value: String,
+}
+
+async fn set_value(
+    State(app): State<Shared>,
+    Path(id): Path<String>,
+    Json(r): Json<ValueReq>,
+) -> ApiResult {
+    let on = lock(&app).set_value(&id, &r.value).map_err(bad)?;
+    Ok(Json(json!({"active": on})))
+}
+
+#[derive(Deserialize)]
+struct StepReq {
+    dir: i32,
+}
+
+async fn step(State(app): State<Shared>, Path(id): Path<String>, Json(r): Json<StepReq>) -> ApiResult {
+    let on = lock(&app).step(&id, r.dir).map_err(bad)?;
+    Ok(Json(json!({"active": on})))
+}
+
+async fn pin(State(app): State<Shared>, Path((gid, cid)): Path<(String, String)>) -> ApiResult {
+    let pinned = lock(&app).toggle_pin(&gid, &cid);
+    Ok(Json(json!({"pinned": pinned})))
 }
 
 async fn reset_cheat_settings(

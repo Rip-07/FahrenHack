@@ -1,6 +1,6 @@
 //! Configuration, per-cheat preferences and settings persistence.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -22,6 +22,8 @@ pub(crate) struct Settings {
     pub(crate) fullscreen: bool,
     /// "game/cheat" -> user's value and hotkey.
     overrides: HashMap<String, Override>,
+    /// "game/cheat" pinned to the top of the cheat list.
+    pins: HashSet<String>,
 }
 
 impl Default for Settings {
@@ -35,6 +37,7 @@ impl Default for Settings {
             sounds: true,
             fullscreen: false,
             overrides: HashMap::new(),
+            pins: HashSet::new(),
         }
     }
 }
@@ -57,6 +60,9 @@ struct Override {
     /// `Some("")` disables the profile's hotkey.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     hotkey: Option<String>,
+    /// Second hotkey ("decrease"); `Some("")` disables the profile's one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    hotkey_down: Option<String>,
 }
 
 pub(crate) fn gen_token() -> String {
@@ -115,12 +121,24 @@ impl Settings {
         }
     }
 
+    pub(super) fn cheat_hotkey_down(&self, game: &str, def: &CheatDef) -> Option<String> {
+        match self
+            .overrides
+            .get(&Self::override_key(game, &def.id))
+            .and_then(|o| o.hotkey_down.clone())
+        {
+            Some(h) => (!h.trim().is_empty()).then_some(h),
+            None => def.hotkey_down.clone(),
+        }
+    }
+
     pub(super) fn set_cheat_override(
         &mut self,
         game: &str,
         cheat: &str,
         value: String,
         hotkey: String,
+        hotkey_down: Option<String>,
     ) {
         let entry = self
             .overrides
@@ -128,6 +146,32 @@ impl Settings {
             .or_default();
         entry.value = (!value.is_empty()).then_some(value);
         entry.hotkey = Some(hotkey);
+        if hotkey_down.is_some() {
+            entry.hotkey_down = hotkey_down;
+        }
+    }
+
+    /// Remembers a slider / select position without touching the hotkeys.
+    pub(super) fn remember_value(&mut self, game: &str, cheat: &str, value: String) {
+        self.overrides
+            .entry(Self::override_key(game, cheat))
+            .or_default()
+            .value = Some(value);
+    }
+
+    pub(super) fn is_pinned(&self, game: &str, cheat: &str) -> bool {
+        self.pins.contains(&Self::override_key(game, cheat))
+    }
+
+    /// Returns whether the cheat is pinned now.
+    pub(super) fn toggle_pin(&mut self, game: &str, cheat: &str) -> bool {
+        let key = Self::override_key(game, cheat);
+        if self.pins.remove(&key) {
+            false
+        } else {
+            self.pins.insert(key);
+            true
+        }
     }
 
     pub(super) fn clear_cheat_override(&mut self, game: &str, cheat: &str) {

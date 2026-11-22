@@ -6,6 +6,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crate::aob;
+use crate::inject;
 use crate::mem::{Module, Process};
 use crate::pointer::{self, Chain, Parsed};
 use crate::profile::{self, Calibration, CheatDef, GameProfile, Locator};
@@ -40,6 +41,19 @@ fn anti_cheat(modules: &[Module]) -> Option<&'static str> {
 pub(super) enum Active {
     Freeze(Vec<u8>),
     Patch { addr: usize, original: Vec<u8> },
+    /// Code injection: the site jumps into `cave`; `original` is restored when switched off.
+    Inject { site: usize, original: Vec<u8>, cave: usize },
+}
+
+impl Active {
+    /// Code range this effect has overwritten, to refuse overlapping patches.
+    pub(super) fn code_range(&self) -> Option<(usize, usize)> {
+        match self {
+            Active::Patch { addr, original } => Some((*addr, addr + original.len())),
+            Active::Inject { site, original, .. } => Some((*site, site + original.len())),
+            Active::Freeze(_) => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -82,6 +96,8 @@ pub(super) struct GameSession {
     /// Addresses found by calibration in this session (used when no pointer chain is known).
     pub(super) session_addresses: HashMap<String, usize>,
     pub(super) active: HashMap<String, Active>,
+    /// Code caves allocated in the game for injection cheats (kept for the whole session).
+    pub(super) caves: HashMap<String, usize>,
     chains: HashMap<String, Vec<Parsed>>,
     pick: HashMap<String, (usize, Instant)>,
     aob_cache: HashMap<String, Option<usize>>,
@@ -133,6 +149,7 @@ impl GameSession {
             calib,
             session_addresses: HashMap::new(),
             active: HashMap::new(),
+            caves: HashMap::new(),
             chains: HashMap::new(),
             pick: HashMap::new(),
             aob_cache: HashMap::new(),
@@ -143,9 +160,85 @@ impl GameSession {
 
     pub(super) fn restore_patches(&mut self) {
         for active in std::mem::take(&mut self.active).into_values() {
-            if let Active::Patch { addr, original } = active {
-                self.proc.write(addr, &original);
+            match active {
+                Active::Patch { addr, original } => {
+                    self.proc.write(addr, &original);
+                }
+                Active::Inject { site, original, .. } => {
+                    self.proc.write(site, &original);
+                }
+                Active::Freeze(_) => {}
             }
+        }
+    }
+
+    /// Name of another active cheat that already rewrote code in `[site, site+len)`.
+    pub(super) fn code_conflict(&self, site: usize, len: usize, except: &str) -> Option<String> {
+        self.active
+            .iter()
+            .filter(|(id, _)| id.as_str() != except)
+            .find(|(_, a)| a.code_range().is_some_and(|(s, e)| site < e && site + len > s))
+            .map(|(id, _)| self.def(id).map_or_else(|| id.clone(), |d| d.name.clone()))
+    }
+
+    /// Switches a code injection on. `param` is written to the cave's data slot first,
+    /// so the injected code never runs with a stale parameter.
+    pub(super) fn inject_on(&mut self, def: &CheatDef, param: Option<&[u8]>) -> Result<(), String> {
+        let Locator::Inject { size, code, .. } = &def.locator else {
+            return Err("Этот чит не использует инъекцию кода".into());
+        };
+        if let Some(Active::Inject { cave, .. }) = self.active.get(&def.id) {
+            if let Some(p) = param {
+                self.proc.write(cave + inject::PARAM_OFFSET, p);
+            }
+            return Ok(());
+        }
+        let site = self.resolve(&def.id).map_err(|e| e.message().to_string())?;
+        if let Some(other) = self.code_conflict(site, *size, &def.id) {
+            return Err(format!("Этот чит меняет тот же код, что и «{other}»: сначала выключите его"));
+        }
+        let parts = inject::parse(code).ok_or("Ошибка в коде инъекции профиля")?;
+        let original = self.read_bytes(site, *size).ok_or("Не удалось прочитать код игры")?;
+        let cave = match self.caves.get(&def.id) {
+            Some(&c) => c,
+            None => {
+                let c = self
+                    .proc
+                    .alloc_near(site, inject::CAVE_SIZE)
+                    .ok_or("Не удалось выделить память рядом с кодом игры")?;
+                self.caves.insert(def.id.clone(), c);
+                c
+            }
+        };
+        let cave_code = inject::assemble(&parts, site, *size, &original, cave)?;
+        if let Some(p) = param {
+            self.proc.write(cave + inject::PARAM_OFFSET, p);
+        }
+        if !self.proc.write(cave, &cave_code) {
+            return Err("Не удалось записать код инъекции".into());
+        }
+        let jump = inject::site_jump(site, *size, cave)?;
+        if !self.proc.write(site, &jump) {
+            return Err("Не удалось изменить код игры".into());
+        }
+        self.active
+            .insert(def.id.clone(), Active::Inject { site, original, cave });
+        Ok(())
+    }
+
+    /// Switches any active effect of a cheat off, restoring patched code.
+    pub(super) fn effect_off(&mut self, id: &str) -> bool {
+        match self.active.remove(id) {
+            Some(Active::Patch { addr, original }) => {
+                self.proc.write(addr, &original);
+                true
+            }
+            Some(Active::Inject { site, original, .. }) => {
+                self.proc.write(site, &original);
+                true
+            }
+            Some(Active::Freeze(_)) => true,
+            None => false,
         }
     }
 
@@ -248,6 +341,12 @@ impl GameSession {
                 Ok(addr)
             }
             Locator::Patch {
+                module,
+                pattern,
+                offset,
+                ..
+            } => Ok((self.aob_site(id, module.as_deref(), &pattern)? as i64 + offset) as usize),
+            Locator::Inject {
                 module,
                 pattern,
                 offset,

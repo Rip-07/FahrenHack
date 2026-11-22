@@ -2,7 +2,7 @@
 /* FahrenHack UI: one page for the desktop window (console style, gamepad + keyboard) and for phones. */
 
 import { createApiClient } from '/ui/api.js';
-import { renderCheatList } from '/ui/cheat-list.js';
+import { rangeLabel, renderCheatList, toggleCategory } from '/ui/cheat-list.js';
 import { $, $$, esc, fmtNum, icon, patchHtml, plural, vtypeOptions } from '/ui/view-helpers.js';
 
 const TABS = ['home', 'scanner', 'remote', 'settings'];
@@ -371,9 +371,21 @@ views.game = {
     const emptyMessage = g.known === false
       ? 'Своих читов пока нет. Найдите значение во вкладке «Сканер» и нажмите «В читы».'
       : 'В профиле нет читов.';
-    renderCheatList(box, list, emptyMessage);
+    renderCheatList(box, list, emptyMessage, live ? S.st.categories : g.categories);
   },
 };
+
+const liveCheat = id => S.st && S.st.cheats ? S.st.cheats.find(x => x.id === id) : null;
+
+async function cheatCall(id, path, body, okSound) {
+  const r = await act(() => api(`/cheats/${encodeURIComponent(id)}/${path}`, 'POST', body));
+  if (r) sfx(okSound || (r.active ? 'on' : 'ok'));
+  await refresh();
+  return r;
+}
+
+const setCheatValue = (id, value) => cheatCall(id, 'value', { value: String(value) });
+const stepCheat = (id, dir) => cheatCall(id, 'step', { dir }, dir > 0 ? 'ok' : 'back');
 
 // ----- scanner
 views.scanner = {
@@ -595,14 +607,22 @@ function cheatMenu(id) {
   const { g, live, c } = findCheat(id);
   if (!c) return;
   const cal = live ? c.calibration : null;
+  const adjustable = ['number', 'slider', 'select'].includes(c.kind);
+  const hasValue = c.kind === 'set' || c.kind === 'freeze';
+  const upLabel = c.kind === 'select' ? 'Следующий вариант' : adjustable ? 'Клавиша «больше»' : 'Горячая клавиша';
+  const downLabel = c.kind === 'select' ? 'Предыдущий вариант' : 'Клавиша «меньше»';
   openModal({
     render: () => `<div class="mhead"><div class="cico big">${icon(c.icon)}</div><div><div class="eyebrow">Параметры чита</div><h2>${esc(c.name)}</h2></div></div>
-      <label class="fld"><span>${c.kind === 'set' ? 'Записываемое значение' : 'Держать значение'}<i>${c.kind === 'freeze' ? 'пусто: то, что было при включении' : 'пусто: значение профиля'}</i></span>
-        <input id="m-val" class="inp" inputmode="decimal" value="${esc(c.value ?? '')}" placeholder="${c.kind === 'freeze' ? 'текущее' : ''}" data-enter="m-save"></label>
-      <label class="fld"><span>Горячая клавиша<i>нажмите сочетание; Backspace: без клавиши</i></span>
+      ${c.info || c.warn ? `<p class="lead">${esc(c.info)}${c.warn ? `<span class="warntext">${esc(c.warn)}</span>` : ''}</p>` : ''}
+      ${hasValue ? `<label class="fld"><span>${c.kind === 'set' ? 'Записываемое значение' : 'Держать значение'}<i>${c.kind === 'freeze' ? 'пусто: то, что было при включении' : 'пусто: значение профиля'}</i></span>
+        <input id="m-val" class="inp" inputmode="decimal" value="${esc(c.value ?? '')}" placeholder="${c.kind === 'freeze' ? 'текущее' : ''}" data-enter="m-save"></label>` : ''}
+      <label class="fld"><span>${upLabel}<i>нажмите сочетание; Backspace: без клавиши</i></span>
         <input id="m-key" class="inp" readonly data-hotkey value="${esc(c.hotkey ?? '')}" placeholder="нет"></label>
+      ${adjustable ? `<label class="fld"><span>${downLabel}</span>
+        <input id="m-key2" class="inp" readonly data-hotkey value="${esc(c.hotkey_down ?? '')}" placeholder="нет"></label>` : ''}
       <div class="mrow">
         <button class="btn primary" data-act="cm-save" data-g="${esc(g.id)}" data-id="${esc(c.id)}" data-k="m-save">Сохранить</button>
+        <button class="btn" data-act="pin" data-g="${esc(g.id)}" data-id="${esc(c.id)}" data-k="m-pin">${icon('pin')}${c.pinned ? 'Открепить' : 'Закрепить'}</button>
         <button class="btn" data-act="cm-defaults" data-g="${esc(g.id)}" data-id="${esc(c.id)}" data-k="m-def">Как в профиле</button>
         ${cal ? `<button class="btn" data-act="cm-recal" data-id="${esc(c.id)}" data-k="m-recal">${icon('scan')}Перенастроить</button>` : ''}
         ${cal && (cal.chains || cal.session) ? `<button class="btn ghost" data-act="cm-forget" data-id="${esc(c.id)}" data-k="m-forget">Сбросить привязку</button>` : ''}
@@ -872,8 +892,20 @@ const ACTIONS = Object.assign({
   'cheat-menu': el => cheatMenu(el.dataset.id),
   'all-off': () => allOff(),
   'detach': () => detach(),
+  'step': el => stepCheat(el.dataset.id, +el.dataset.dir),
+  'sel-apply': el => {
+    const sel = el.closest('.cctl').querySelector('[data-sel]');
+    if (sel) setCheatValue(el.dataset.id, sel.value);
+  },
+  'pin': async el => {
+    const gid = el.dataset.g || (viewedGame() || {}).id;
+    const r = await act(() => api(`/games/${encodeURIComponent(gid)}/cheats/${encodeURIComponent(el.dataset.id)}/pin`, 'POST'));
+    if (r) { toast(r.pinned ? 'Чит закреплён вверху списка' : 'Чит откреплён'); closeModal(); refresh(); loadGames(); }
+  },
+  'cat-toggle': el => { toggleCategory(el.dataset.cat); sfx('move'); views.game.update(); },
   'cm-save': async el => {
-    const body = { value: $('#m-val').value.trim(), hotkey: $('#m-key').value.trim() };
+    const body = { value: $('#m-val') ? $('#m-val').value.trim() : '', hotkey: $('#m-key').value.trim() };
+    if ($('#m-key2')) body.hotkey_down = $('#m-key2').value.trim();
     if (await act(() => api(`/games/${encodeURIComponent(el.dataset.g)}/cheats/${encodeURIComponent(el.dataset.id)}`, 'PUT', body), 'Сохранено')) {
       closeModal();
       refresh();
@@ -961,7 +993,27 @@ document.addEventListener('click', e => {
 });
 
 document.addEventListener('input', e => {
-  if (e.target.id === 'p-q' && M && M.filter) M.filter(e.target.value);
+  const t = e.target;
+  if (t.id === 'p-q' && M && M.filter) M.filter(t.value);
+  if (t.dataset && t.dataset.range !== undefined) {
+    // Live label while dragging; the value is sent on 'change'.
+    t.dataset.dragging = '1';
+    const c = liveCheat(t.dataset.id);
+    const out = t.closest('.slider').querySelector('[data-out]');
+    if (c && out) out.textContent = rangeLabel(c, t.value);
+  }
+});
+
+document.addEventListener('change', e => {
+  const t = e.target;
+  if (!t.dataset) return;
+  if (t.dataset.range !== undefined) {
+    delete t.dataset.dragging;
+    setCheatValue(t.dataset.id, t.value);
+  } else if (t.dataset.num !== undefined) {
+    const v = t.value.trim();
+    if (v) setCheatValue(t.dataset.id, v);
+  }
 });
 
 $('#view').addEventListener('focusin', e => {
@@ -1021,6 +1073,18 @@ document.addEventListener('keydown', e => {
 
 // ---------------------------------------------------------------- gamepad
 const PAD = { prev: {}, rep: {} };
+/** Left/right on a focused slider moves it (one step per press) instead of moving focus. */
+function moveOrAdjust(dir) {
+  const el = document.activeElement;
+  if (el && el.dataset && el.dataset.range !== undefined) {
+    if (dir === 'right') el.stepUp(); else el.stepDown();
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+    return;
+  }
+  moveFocus(dir);
+}
+
 function padEdge(name, down, fn) {
   if (down && !PAD.prev[name]) fn();
   PAD.prev[name] = down;
@@ -1044,8 +1108,8 @@ function padLoop(ts) {
     }
     padRepeat('up', btn(12) || ay < -0.55, ts, () => moveFocus('up'));
     padRepeat('down', btn(13) || ay > 0.55, ts, () => moveFocus('down'));
-    padRepeat('left', btn(14) || ax < -0.55, ts, () => moveFocus('left'));
-    padRepeat('right', btn(15) || ax > 0.55, ts, () => moveFocus('right'));
+    padRepeat('left', btn(14) || ax < -0.55, ts, () => moveOrAdjust('left'));
+    padRepeat('right', btn(15) || ax > 0.55, ts, () => moveOrAdjust('right'));
     padEdge('a', btn(0), () => { activate(); sfx('ok'); });
     padEdge('b', btn(1), back);
     padEdge('y', btn(3), () => { if (S.view === 'game' && !M) allOff(); });
