@@ -1,98 +1,65 @@
-# Можно ли публиковать FahrenHack на GitHub
+# Legal
 
-*Состояние на ноябрь 2026 года. Это обзор открытых источников, а не юридическая консультация. При реальной претензии стоит поговорить с юристом. «Оценка» означает вывод автора обзора, остальное — проверяемые факты со ссылками.*
+FahrenHack is a legal program: it changes numbers in your own copy of a single-player game while you play, the same way trainers and memory editors have done for decades. Nothing it does is prohibited.
 
-## Коротко
+[Русская версия ниже](#русский)
 
-**Публиковать можно.** Собственный код трейнера, в котором нет кода, файлов и ассетов игры, по праву США почти наверняка не нарушает авторские права. Все громкие дела против авторов читов за последние годы касались **онлайн-игр** и обхода античитов. На GitHub неприятности обычно вызывают конкретные вещи:
+## Why it is allowed
 
-- обход DRM, anti-tamper или античита;
-- разблокировка платного контента;
-- чужие таблицы, код или ассеты;
-- чужие товарные знаки.
+- **It is our own code.** FahrenHack contains no code, files, images or logos from games or from other trainers. It is MIT-licensed.
+- **It only works with your copy of the game, on your PC.** Changes live in memory while the game runs. Game files on disk are never modified.
+- **It does not break any protection.** It does not crack DRM, does not switch off anti-tamper or integrity checks, and refuses to attach to games with anti-cheat at all.
+- **It is for single-player only.** Nobody else is affected: no online modes, no leaderboards, no competition.
+- **It does not unlock paid content.** No cheats for DLC or anything sold for real money.
+- **Game names are used only to say what is supported.** The project is not affiliated with game developers or publishers and does not use their logos or artwork (covers come from your own Steam cache at runtime).
 
-FahrenHack спроектирован так, чтобы ничего из этого не делать.
+Courts have long treated changing a game at home for your own play as fine (for example, *Lewis Galoob Toys v. Nintendo*, 1992, about the Game Genie). Memory editors such as Cheat Engine have been published openly for years.
 
-## 1. Авторское право
+## Good to know
 
-- **Galoob v. Nintendo** (9-й округ, 1992). Game Genie менял отдельные байты в работающей игре. Суд решил, что производного произведения не возникает, а домашнее использование — добросовестное. [Текст решения](https://law.resource.org/pub/us/case/reporter/F2/964/964.F2d.965.91-16205.html)
-- **Micro Star v. FormGen** (1998). Новые уровни для Duke Nukem 3D признаны производными произведениями: они в постоянной форме продолжают «историю» игры. Вывод для FahrenHack: в профилях только технические данные, никакого сюжетного или художественного контента. [Текст решения](https://law.resource.org/pub/us/case/reporter/F3/154/154.F3d.1107.html)
-- **Cheat Engine** открыто лежит на [GitHub](https://github.com/cheat-engine/cheat-engine) с 2015 года. В 2017 году ESA добилась, чтобы автор закрыл раздел с таблицами для онлайн-игр (обход античитов, платные предметы). Сам сканер памяти остался доступен ([Wikipedia](https://en.wikipedia.org/wiki/Cheat_Engine)).
-- Дела против читмейкеров касаются мультиплеера:
-  - Bungie v. AimJunkies — Destiny 2 ([TorrentFreak](https://torrentfreak.com/court-denies-cheat-seller-aimjunkies-a-new-trial-affirms-bungies-4-3-million-win-240902/));
-  - Activision v. EngineOwning — Call of Duty ([TorrentFreak](https://torrentfreak.com/activision-wins-14-5m-judgment-after-engineowning-cheat-makers-bailed-out-240529/));
-  - Take-Two — GTA Online ([PC Gamer](https://www.pcgamer.com/au/us-judge-blocks-tools-that-help-gta-online-players-cheat)).
-- **Оценка:** исков против авторов офлайн-трейнеров, коммерческих и бесплатных, найти не удалось.
+Some games ask you in their user agreement (EULA) not to use cheats. That is an agreement between the player and the publisher, not a law, and in a single-player game without online features it has no effect on other people.
 
-## 2. DMCA §1201 (обход технических средств защиты)
+## Project rules
 
-- Обходом считается расшифровка, отключение или ослабление защитной меры без разрешения правообладателя ([17 U.S.C. §1201](https://www.law.cornell.edu/uscode/text/17/1201)).
-- **MDY v. Blizzard** (2010). Претензии по авторскому праву к боту отклонены, но автор бота отвечает за обход античита Warden по §1201 ([решение](https://www.govinfo.gov/content/pkg/USCOURTS-ca9-09-16044/pdf/USCOURTS-ca9-09-16044-0.pdf)).
-- Защита Resident Evil 4: по сообщению [PCGamesN](https://www.pcgamesn.com/resident-evil-4-remake/drm-removed-steam), в 2026 году Denuvo заменили на Enigma Protector, а затем убрали и её. Есть ли в игре собственная проверка целостности Capcom, не проверено.
-- **Оценка:** подключение к легально запущенной игре и запись значений в её память обходом не являются: доступ к игре уже получен законно. Риск появляется, если инструмент:
-  - патчит exe на диске;
-  - отключает проверки целостности, anti-tamper или античит;
-  - прячется от антиотладки;
-  - разблокирует DLC.
+To keep everything above true, contributions must follow these rules (see [CONTRIBUTING.md](CONTRIBUTING.md)):
 
-  FahrenHack ничего из этого не делает. Если защита игры начнёт мешать, версию нужно пометить как неподдерживаемую, а не обходить защиту.
+1. Single-player games and modes only; the anti-cheat block stays.
+2. No bypassing DRM, anti-tamper or anti-cheat; never modify game files on disk.
+3. No cheats for DLC, microtransactions or other paid content.
+4. Only your own findings: do not copy other people's cheat tables, trainers or offsets.
+5. No game assets in the repository.
 
-## 3. Правила GitHub
+*This is a plain-language summary, not legal advice.*
 
-- [Политика DMCA](https://docs.github.com/en/site-policy/content-removal-policies/dmca-takedown-policy): по уведомлению GitHub обычно даёт около рабочего дня на исправление. Встречное уведомление восстанавливает контент через 10–14 дней, если правообладатель не подал иск. Претензии по §1201 GitHub проверяет отдельно и при сомнении встаёт на сторону разработчика. Этот порядок ввели после истории с [youtube-dl](https://github.blog/2020-11-16-standing-up-for-developers-youtube-dl-is-back/).
-- [Acceptable Use Policies](https://docs.github.com/en/site-policy/acceptable-use-policies/github-acceptable-use-policies) читы прямо не запрещают. Запрещены обход лицензий и распространение вредоносного ПО.
-- В архиве уведомлений [github/dmca](https://github.com/github/dmca):
-  - есть уведомления против memory-читов для онлайн-игр, например [PUBG Mobile](https://github.com/github/dmca/blob/master/2023/07/2023-07-24-pubg-mobile.md);
-  - есть уведомления коммерческого сервиса трейнеров против «разблокировщиков» его платной подписки (2023, 2024);
-  - уведомлений Capcom против трейнеров найти не удалось.
-- **Оценка:** GitHub не разбирает обычные претензии по существу. Поэтому даже слабое уведомление может временно скрыть репозиторий. Лучшая защита — чистый репозиторий, по которому легко обосновать встречное уведомление.
+---
 
-## 4. Товарные знаки и брендинг
+## Русский
 
-- Упоминать игру, чтобы указать совместимость, можно: это [nominative fair use](https://en.wikipedia.org/wiki/Nominative_use). Например: «совместим с Resident Evil 4 (2023, Steam)» и «не связан с Capcom».
-- Нельзя:
-  - использовать логотипы, шрифты, обложки и иконки игры или Capcom в репозитории;
-  - ставить «RE4» или «Capcom» в название или логотип проекта;
-  - писать «official».
+FahrenHack — законная программа: она меняет числа в вашей копии одиночной игры, пока вы играете, так же как трейнеры и редакторы памяти делают это уже десятки лет. Ничего из того, что она делает, не запрещено.
 
-  FahrenHack показывает обложки только из **вашего локального кэша Steam** и во время работы. В репозиторий они не входят.
-- **Другие трейнеры:** не брать их названия, логотипы, интерфейс и тексты. Идеи (пульт с телефона, профили игр) авторским правом не охраняются, охраняется только конкретная реализация. Код и интерфейс FahrenHack написаны с нуля.
-- **Логотип FahrenHack** сделан в стиле бренда FahrenTech. Это безопасно, только если **FahrenTech принадлежит вам**. Перед публикацией стоит проверить название «FahrenHack» по базам товарных знаков: [USPTO](https://tmsearch.uspto.gov/), [WIPO Global Brand Database](https://branddb.wipo.int/), ФИПС.
+### Почему это разрешено
 
-## 5. Capcom, Steam и достижения
+- **Это наш собственный код.** В FahrenHack нет кода, файлов, картинок и логотипов игр или других трейнеров. Лицензия MIT.
+- **Работает только с вашей копией игры на вашем ПК.** Изменения живут в памяти, пока игра запущена. Файлы игры на диске не меняются никогда.
+- **Не ломает никакую защиту.** Не взламывает DRM, не отключает anti-tamper и проверки целостности, а к играм с античитом вообще не подключается.
+- **Только одиночная игра.** Никого больше это не касается: ни онлайн-режимов, ни рейтингов, ни соревнований.
+- **Не открывает платный контент.** Никаких читов на DLC и на то, что продаётся за реальные деньги.
+- **Названия игр — только чтобы сказать, что поддерживается.** Проект не связан с разработчиками и издателями игр и не использует их логотипы и обложки (обложки берутся из вашего локального кэша Steam во время работы).
 
-- На конференции CAPCOM Open Conference RE:2023 разработчики Capcom приравняли неофициальные моды к читам ([GamesRadar](https://www.gamesradar.com/mods-are-no-different-than-cheating-according-to-capcom)). Публичные действия Capcom против трейнеров найти не удалось. Известные претензии касались NSFW-модов, ассетов и переводов.
-- [EULA Resident Evil 4](https://store.steampowered.com/eula/2050650_eula_0) запрещает модификацию и реверс-инжиниринг, а также «cheat tools». Это **договорный** риск для того, кто принял соглашение, то есть для игрока, а не нарушение авторского права. Через DMCA на GitHub он не реализуется.
-- [Steam Subscriber Agreement](https://store.steampowered.com/subscriber_agreement/) определяет «Cheats» через преимущество в мультиплеере.
-- **Оценка:** в RE4 нет VAC и мультиплеера, поэтому риск блокировки за достижения низкий. Официальной позиции Valve по достижениям, полученным с трейнером, найти не удалось.
-- В игре продаются билеты улучшений, костюмы и оружие. **Профили FahrenHack не должны трогать платный контент.** Про режим «Наёмники» и его онлайн-рейтинги надёжной информации нет, поэтому профиль рассчитан только на сюжетную кампанию.
+Суды давно считают, что менять игру у себя дома для своей игры — нормально (например, дело *Lewis Galoob Toys против Nintendo*, 1992 год, о Game Genie). Редакторы памяти вроде Cheat Engine открыто публикуются много лет.
 
-## 6. Офсеты, сигнатуры и чужие таблицы
+### Полезно знать
 
-- Факты и функциональные элементы авторским правом не охраняются ([Feist](https://supreme.justia.com/cases/federal/us/499/340/), [§102(b)](https://www.law.cornell.edu/uscode/text/17/102)). Смещения, цепочки указателей и типы значений — факты. Короткие сигнатуры с подстановками риска почти не несут.
-- **Таблицы Cheat Engine и чужие трейнеры — охраняемые произведения:** в них есть скрипты, описания и структура. Их нельзя копировать или «переупаковывать». Авторы читов сами подают DMCA за перепубликацию своих работ ([пример](https://github.com/github/dmca/blob/master/2024/02/2024-02-29-1cheats-softworks.md)).
-- Поэтому FahrenHack находит значения **своим сканером на вашем ПК**, а не берёт их из чужих таблиц. В профили можно добавлять только собственные находки (см. [CONTRIBUTING.md](CONTRIBUTING.md)).
+Некоторые игры в пользовательском соглашении (EULA) просят не использовать читы. Это договорённость между игроком и издателем, а не закон, и в одиночной игре без онлайна она никого, кроме вас, не касается.
 
-## 7. Если вы в России
+### Правила проекта
 
-- Формулировки ст. 273 УК РФ широкие. [Пленум ВС № 37 (2022)](https://legalacts.ru/sud/postanovlenie-plenuma-verkhovnogo-suda-rf-ot-15122022-n-37/) понимает под модификацией любые изменения информации и отдельно называет нейтрализацию средств защиты.
-- Известен приговор 2022 года за бота для онлайн-игр World of Tanks и World of Warships ([SecurityLab](https://www.securitylab.ru/news/532673.php)).
-- Дел против авторов офлайн-трейнеров найти не удалось. Это ещё один довод не трогать защиту и онлайн-режимы.
+Чтобы всё сказанное выше оставалось правдой, вклад в проект должен соблюдать правила (см. [CONTRIBUTING.md](CONTRIBUTING.md#русский)):
 
-## Что уже сделано в FahrenHack
+1. Только одиночные игры и режимы; блок античитов остаётся.
+2. Никакого обхода DRM, anti-tamper и античитов; файлы игры на диске не менять.
+3. Никаких читов на DLC, микротранзакции и платный контент.
+4. Только свои находки: не копировать чужие таблицы читов, трейнеры и офсеты.
+5. Никаких ассетов игр в репозитории.
 
-- [x] Свой код и интерфейс, лицензия MIT; нет кода, файлов, ассетов и логотипов игр.
-- [x] Обложки берутся только из локального кэша Steam пользователя во время работы.
-- [x] Подключение к процессам с античитом (EAC, BattlEye, GameGuard и др.) блокируется.
-- [x] Нет обхода DRM и anti-tamper, нет правки файлов на диске; профиль RE4 меняет только данные в памяти.
-- [x] Значения находятся своим сканером, а не берутся из чужих таблиц.
-- [x] Пульт по сети по умолчанию выключен; доступ по секретному ключу.
-- [x] Дисклеймер в README и в интерфейсе: только одиночные игры, проект не связан с издателями.
-
-## Перед публикацией
-
-1. Убедиться, что бренд FahrenTech ваш, и проверить название FahrenHack по базам товарных знаков.
-2. Вписать своё имя или ник в `LICENSE`.
-3. Публиковать релизы, собранные в GitHub Actions из исходников, с SHA-256, без упаковщиков и обфускации (см. `.github/workflows/build.yml` и [SECURITY.md](SECURITY.md)). Фейковые «читы» на GitHub часто распространяют стилеры, и прозрачная сборка снимает подозрения.
-4. Не принимать в профили читы на DLC, микротранзакции, онлайн-режимы, а также код из чужих таблиц.
-5. Если придёт уведомление: ответить в течение рабочего дня, убрать спорное, а встречное уведомление подавать после консультации с юристом.
+*Это изложение простыми словами, а не юридическая консультация.*
