@@ -20,6 +20,8 @@ pub enum VType {
     I64,
     F32,
     F64,
+    /// One byte (game flags). Profiles only; the scanner UI does not offer it.
+    U8,
 }
 
 fn clean(s: &str) -> String {
@@ -29,6 +31,7 @@ fn clean(s: &str) -> String {
 impl VType {
     pub fn size(self) -> usize {
         match self {
+            VType::U8 => 1,
             VType::I32 | VType::F32 => 4,
             VType::I64 | VType::F64 => 8,
         }
@@ -40,6 +43,7 @@ impl VType {
             VType::I64 => i64::from_le_bytes(b[..8].try_into().unwrap()) as f64,
             VType::F32 => f32::from_le_bytes(b[..4].try_into().unwrap()) as f64,
             VType::F64 => f64::from_le_bytes(b[..8].try_into().unwrap()),
+            VType::U8 => b[0] as f64,
         }
     }
 
@@ -51,12 +55,13 @@ impl VType {
             VType::I64 => t.parse::<i64>().map_err(|_| err())?.to_le_bytes().to_vec(),
             VType::F32 => t.parse::<f32>().map_err(|_| err())?.to_le_bytes().to_vec(),
             VType::F64 => t.parse::<f64>().map_err(|_| err())?.to_le_bytes().to_vec(),
+            VType::U8 => vec![t.parse::<u8>().map_err(|_| err())?],
         })
     }
 
     pub fn fmt(self, b: &[u8]) -> String {
         match self {
-            VType::I32 | VType::I64 => format!("{}", self.decode(b) as i64),
+            VType::I32 | VType::I64 | VType::U8 => format!("{}", self.decode(b) as i64),
             VType::F32 | VType::F64 => {
                 let s = format!("{:.3}", self.decode(b));
                 s.trim_end_matches('0').trim_end_matches('.').to_string()
@@ -70,6 +75,7 @@ impl VType {
             VType::I64 => "целое 8 байт",
             VType::F32 => "дробное 4 байта",
             VType::F64 => "дробное 8 байт",
+            VType::U8 => "байт 0–255",
         }
     }
 
@@ -328,6 +334,9 @@ mod tests {
         assert_eq!(VType::I32.fmt(&VType::I32.encode("1 000 000").unwrap()), "1000000");
         assert_eq!(VType::F32.fmt(&VType::F32.encode("12,5").unwrap()), "12.5");
         assert!(VType::I32.encode("abc").is_err());
+        assert_eq!(VType::U8.encode("1").unwrap(), vec![1]);
+        assert!(VType::U8.encode("256").is_err());
+        assert_eq!(VType::U8.fmt(&[7]), "7");
     }
 
     #[test]

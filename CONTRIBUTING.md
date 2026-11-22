@@ -57,8 +57,9 @@ How to add a game or improve a profile. Profiles live in `games/*.json` and are 
   | `slider` | slider | setting from `min` to `max` in `step`s; `off_value` switches the cheat off. For multipliers, damage, speed |
   | `select` | list + Apply | writes the chosen option from `options` (`{ "label": "…", "value": "…" }`) |
 
-- `vtype`: `i32`, `i64`, `f32` or `f64`.
+- `vtype`: `i32`, `i64`, `f32`, `f64` or `u8` (one byte, for game flags; profiles only).
 - `value`: default value. For `freeze`, `null` means "keep what it was when switched on"; for `slider` and `select`, the initial position.
+- `off_value`: for `slider`, the value that means "off"; for `freeze`, the value written back when the cheat is switched off (a game flag returns to 0, a speed to 1).
 - `hotkey`: e.g. `F1`, `CTRL+F2`, `SHIFT+NUM5`, `ALT+K`. For `number` and `slider` it means "up", for `select` "next option".
 - `hotkey_down`: "down" or "previous option" (`number`, `slider`, `select` only).
 - `info`: tooltip behind an "i". `warn`: warning behind a yellow "!" for side effects the player should know about.
@@ -73,6 +74,7 @@ How to add a game or improve a profile. Profiles live in `games/*.json` and are 
 | `aob` | Byte signature in a module. Optional `rip: [disp32 offset, instruction length]` for RIP-relative addressing, then `offsets` as in `pointer`. |
 | `patch` | Byte replacement at a signature: `pattern`, `offset`, `bytes`. The original bytes are restored when switched off. |
 | `inject` | Code injection: `size` bytes (at least 5) at the signature (`pattern` + `offset`) become a jump into a code cave near the module, where `code` runs. The original bytes are restored when switched off. |
+| `item` | An item in an inventory list: `pattern`, `rip`, `offsets` lead (as in `aob`) to a managed `List<T>`; FahrenHack finds the element whose item object (at `item`, default `10`) has the u32 `id` at `id_at` (default `28`) and uses the value at `field`. |
 
 ### `code` template for `inject`
 
@@ -84,6 +86,7 @@ Hex bytes separated by spaces, plus placeholders:
 | `{return}` | jump back to the first instruction after the overwritten bytes (5 bytes) |
 | `{param}` | rel32 to the parameter slot, for an instruction whose displacement is its last field, e.g. `F3 0F 59 05 {param}` = `mulss xmm0, [param]` |
 | `{param_abs}` | 8-byte absolute address of the parameter, e.g. `48 B8 {param_abs}` = `mov rax, param` |
+| `{addr:ID}` | rel32 to a slot that holds the current address of another cheat's value (cheat `ID` of the same profile), or 0 while it is unknown. FahrenHack keeps it current, e.g. to leave the player alone in a damage hook |
 
 The parameter is the slider value (`slider`), the chosen option (`select`) or the switch's `value`, written as `vtype`. A slider changes it live without touching the code. Two cheats cannot patch the same code at once: the second one gets a clear error.
 
@@ -152,8 +155,9 @@ powershell -ExecutionPolicy Bypass -File tools\e2e.ps1
   | `slider` | ползунок | настройка от `min` до `max` с шагом `step`; `off_value` выключает чит. Для множителей, урона, скорости |
   | `select` | список и «Применить» | записывает выбранный вариант из `options` (`{ "label": "…", "value": "…" }`) |
 
-- `vtype`: `i32`, `i64`, `f32` или `f64`.
+- `vtype`: `i32`, `i64`, `f32`, `f64` или `u8` (один байт, для флагов игры; только в профилях).
 - `value`: значение по умолчанию. Для `freeze` значение `null` означает «держать то, что было при включении»; для `slider` и `select` — начальная позиция.
+- `off_value`: для `slider` — значение «выключено»; для `freeze` — что записать при выключении (флаг игры возвращается в 0, скорость в 1).
 - `hotkey`: клавиша вроде `F1`, `CTRL+F2`, `SHIFT+NUM5`, `ALT+K`. Для `number` и `slider` это «больше», для `select` — следующий вариант.
 - `hotkey_down`: «меньше» или предыдущий вариант (только `number`, `slider`, `select`).
 - `info`: подсказка за значком «i». `warn`: предупреждение за жёлтым «!» о побочных эффектах.
@@ -168,10 +172,11 @@ powershell -ExecutionPolicy Bypass -File tools\e2e.ps1
 | `aob` | Байтовая сигнатура в модуле; необязательный `rip` для RIP-адресации, затем `offsets`. |
 | `patch` | Замена байтов по сигнатуре; при выключении исходные байты возвращаются. |
 | `inject` | Инъекция кода: `size` байт (минимум 5) по сигнатуре заменяются переходом в код-пещеру, где выполняется `code`; при выключении исходные байты возвращаются. |
+| `item` | Предмет в списке инвентаря: `pattern`, `rip`, `offsets` ведут (как в `aob`) к управляемому `List<T>`; FahrenHack ищет элемент, у которого объект предмета (по `item`, по умолчанию `10`) содержит u32 `id` по `id_at` (по умолчанию `28`), и берёт значение по `field`. |
 
 ### Шаблон `code` для `inject`
 
-Байты в hex через пробел и подстановки: `{orig}` (затёртые байты; нельзя, если в них адресация относительно RIP), `{return}` (переход обратно, 5 байт), `{param}` (rel32 до ячейки параметра для инструкции, где смещение — последнее поле), `{param_abs}` (8-байтовый адрес параметра).
+Байты в hex через пробел и подстановки: `{orig}` (затёртые байты; нельзя, если в них адресация относительно RIP), `{return}` (переход обратно, 5 байт), `{param}` (rel32 до ячейки параметра для инструкции, где смещение — последнее поле), `{param_abs}` (8-байтовый адрес параметра), `{addr:ID}` (rel32 до ячейки с текущим адресом значения другого чита этого профиля или 0, пока он неизвестен; FahrenHack держит его актуальным).
 
 Параметр — значение ползунка, выбранный вариант или `value` переключателя в формате `vtype`. Ползунок меняет его на лету. Два чита не могут патчить один и тот же код одновременно. Пример — в английском разделе выше.
 

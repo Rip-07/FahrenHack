@@ -71,8 +71,11 @@ try {
 
   $denied = $false; try { Invoke-RestMethod "$b/state" | Out-Null } catch { $denied = $true }
   Check $denied 'API rejects requests without the token'
+  # Another game with a built-in profile may be running and win the auto-attach race:
+  # attach to the test game explicitly in that case.
   $s = J GET /state
-  Check ($s.attached.exe -eq 'dummygame2.exe') "auto-attached to the game (build $($s.attached.build))"
+  if ($s.attached.exe -ne 'dummygame2.exe') { J POST /attach @{ pid = $g.Id } | Out-Null; $s = J GET /state }
+  Check ($s.attached.exe -eq 'dummygame2.exe') "attached to the game (build $($s.attached.build))"
 
   # HP: hidden value -> snapshot + decreased
   WaitJob (J POST /scan/unknown @{ vtype = 'i32' }) | Out-Null
@@ -155,6 +158,10 @@ try {
   $g = Start-Process $dummy -PassThru -WindowStyle Hidden -RedirectStandardOutput $out
   Start-Sleep 4
   $s = J GET /state
+  if ($s.attached.exe -and $s.attached.exe -ne 'dummygame2.exe') {
+    # auto-attach did work, but picked another running game with a profile
+    J POST /attach @{ pid = $g.Id } | Out-Null; $s = J GET /state
+  }
   $hpC = $s.cheats | Where-Object id -eq 'hp'
   Check ($s.attached.pid -eq $g.Id) 're-attached after restart'
   Check ($hpC.status -eq 'ready' -and [math]::Abs([int]$hpC.current - (Hp)) -le 7) "HP resolves after restart (cheat sees $($hpC.current), game shows $(Hp))"

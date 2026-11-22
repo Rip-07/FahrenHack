@@ -110,6 +110,7 @@ pub struct CheatDef {
     #[serde(default)]
     pub max: Option<f64>,
     /// Slider value that means "cheat off" (patch removed, nothing frozen).
+    /// For a freeze: the value written back when it is switched off (game flags).
     #[serde(default)]
     pub off_value: Option<String>,
     #[serde(default)]
@@ -192,6 +193,27 @@ pub enum Locator {
         size: usize,
         code: String,
     },
+    /// An item in an inventory list. The signature, `rip`, `add` and `offsets` lead (like `Aob`)
+    /// to a managed `List<T>` object (+0x10 array, +0x18 size, elements from array +0x20).
+    /// Each element holds an item object at `item`; the first item whose u32 at `id_at`
+    /// equals `id` gives the value at item + `field`.
+    Item {
+        #[serde(default)]
+        module: Option<String>,
+        pattern: String,
+        #[serde(default)]
+        rip: Option<[usize; 2]>,
+        #[serde(default)]
+        add: i64,
+        #[serde(default)]
+        offsets: Vec<String>,
+        #[serde(default = "default_item_ptr")]
+        item: String,
+        #[serde(default = "default_item_id_at")]
+        id_at: String,
+        id: String,
+        field: String,
+    },
     /// Found once on the user's machine by a guided search, then kept as pointer chains.
     Calibrate {
         #[serde(default)]
@@ -201,6 +223,14 @@ pub enum Locator {
         #[serde(default)]
         steps: Vec<String>,
     },
+}
+
+fn default_item_ptr() -> String {
+    "10".into()
+}
+
+fn default_item_id_at() -> String {
+    "28".into()
 }
 
 impl GameProfile {
@@ -358,7 +388,10 @@ mod tests {
                 if let Locator::Inject { code, size, pattern, .. } = &c.locator {
                     assert!(*size >= 5, "{}: inject needs at least 5 bytes for the jump", c.id);
                     assert!(crate::aob::parse(pattern).is_some(), "{}: bad pattern", c.id);
-                    assert!(crate::inject::parse(code).is_some(), "{}: bad inject code", c.id);
+                    let parts = crate::inject::parse(code).unwrap_or_else(|| panic!("{}: bad inject code", c.id));
+                    for link in crate::inject::links(&parts) {
+                        assert!(g.cheats.iter().any(|o| o.id == link), "{}: {{addr:{link}}} names no cheat", c.id);
+                    }
                 }
             }
         }

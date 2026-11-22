@@ -9,10 +9,17 @@
 //! - `{return}`    `jmp` back to the first instruction after the overwritten bytes (5 bytes);
 //! - `{param}`     rel32 displacement to the parameter slot, for an instruction whose
 //!                 displacement is its last field, e.g. `F3 0F 59 05 {param}` = `mulss xmm0,[param]`;
-//! - `{param_abs}` 8-byte absolute address of the parameter, e.g. `48 B8 {param_abs}`.
+//! - `{param_abs}` 8-byte absolute address of the parameter, e.g. `48 B8 {param_abs}`;
+//! - `{addr:ID}`   rel32 displacement to a cave slot that holds the current address of
+//!                 another cheat's value (cheat `ID` of the same profile), or 0 while that
+//!                 address is unknown. The app refreshes the slot while the injection is on,
+//!                 e.g. `48 8B 05 {addr:health}` = `mov rax,[address of the player's health]`.
 
 pub const CAVE_SIZE: usize = 0x1000;
 pub const PARAM_OFFSET: usize = 0xF00;
+/// First slot for `{addr:ID}` values, after the 8-byte parameter.
+pub const LINK_OFFSET: usize = 0xF08;
+pub const MAX_LINKS: usize = 16;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Part {
@@ -21,6 +28,20 @@ pub enum Part {
     Return,
     Param,
     ParamAbs,
+    Addr(String),
+}
+
+/// Cheat ids referenced by `{addr:ID}`, in slot order (slot k at `LINK_OFFSET + 8k`).
+pub fn links(parts: &[Part]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for p in parts {
+        if let Part::Addr(id) = p {
+            if !out.contains(id) {
+                out.push(id.clone());
+            }
+        }
+    }
+    out
 }
 
 pub fn parse(code: &str) -> Option<Vec<Part>> {
@@ -31,6 +52,7 @@ pub fn parse(code: &str) -> Option<Vec<Part>> {
             "{return}" => Part::Return,
             "{param}" => Part::Param,
             "{param_abs}" => Part::ParamAbs,
+            t if t.starts_with("{addr:") && t.ends_with('}') && t.len() > 7 => Part::Addr(t[6..t.len() - 1].to_string()),
             hex => Part::Bytes(vec![u8::from_str_radix(hex, 16).ok().filter(|_| hex.len() == 2)?]),
         };
         match (parts.last_mut(), part) {
@@ -51,6 +73,10 @@ fn rel32(from_end: usize, to: usize) -> Result<[u8; 4], String> {
 /// Machine code for the cave.
 pub fn assemble(parts: &[Part], site: usize, size: usize, original: &[u8], cave: usize) -> Result<Vec<u8>, String> {
     let param = cave + PARAM_OFFSET;
+    let ids = links(parts);
+    if ids.len() > MAX_LINKS {
+        return Err("Слишком много ссылок {addr:…} в коде инъекции".into());
+    }
     let mut out = Vec::new();
     for p in parts {
         match p {
@@ -66,6 +92,11 @@ pub fn assemble(parts: &[Part], site: usize, size: usize, original: &[u8], cave:
                 out.extend_from_slice(&rel32(end, param)?);
             }
             Part::ParamAbs => out.extend_from_slice(&(param as u64).to_le_bytes()),
+            Part::Addr(id) => {
+                let k = ids.iter().position(|x| x == id).unwrap();
+                let end = cave + out.len() + 4;
+                out.extend_from_slice(&rel32(end, cave + LINK_OFFSET + 8 * k)?);
+            }
         }
     }
     if out.len() > PARAM_OFFSET {
@@ -120,5 +151,19 @@ mod tests {
         assert_eq!(site as i64 + 5 + r, cave as i64);
         assert!(site_jump(site, 4, cave).is_err());
         assert!(site_jump(site, 5, site + (3 << 30)).is_err());
+    }
+
+    #[test]
+    fn addr_links_get_their_own_slots() {
+        let parts = parse("48 8B 05 {addr:health} 48 8B 0D {addr:ammo} 48 8B 15 {addr:health} {return}").unwrap();
+        assert_eq!(links(&parts), vec!["health".to_string(), "ammo".to_string()]);
+        let cave = 0x1_4100_0000;
+        let code = assemble(&parts, 0x1_4000_1000, 5, &[0x90; 5], cave).unwrap();
+        // each `mov r64,[rip+d]` is 7 bytes; d is relative to the end of the instruction
+        let target = |at: usize| (cave + at + 7) as i64 + i32::from_le_bytes(code[at + 3..at + 7].try_into().unwrap()) as i64;
+        assert_eq!(target(0), (cave + LINK_OFFSET) as i64);
+        assert_eq!(target(7), (cave + LINK_OFFSET + 8) as i64);
+        assert_eq!(target(14), (cave + LINK_OFFSET) as i64);
+        assert!(parse("{addr:}").is_none());
     }
 }

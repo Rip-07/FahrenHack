@@ -11,7 +11,7 @@ use super::App;
 /// Text form of a number for a value type: integers are rounded, floats keep up to 4 decimals.
 pub(super) fn format_number(vt: VType, n: f64) -> String {
     match vt {
-        VType::I32 | VType::I64 => format!("{}", n.round() as i64),
+        VType::I32 | VType::I64 | VType::U8 => format!("{}", n.round() as i64),
         VType::F32 | VType::F64 => {
             let s = format!("{n:.4}");
             s.trim_end_matches('0').trim_end_matches('.').to_string()
@@ -105,7 +105,7 @@ impl App {
                     .ok_or_else(|| "Запись в память не удалась".to_string())
             }
             Kind::Freeze => {
-                if g.active.remove(id).is_some() {
+                if g.effect_off(id) {
                     return Ok(false);
                 }
                 let addr = g.resolve(id).map_err(|e| e.message().to_string())?;
@@ -414,5 +414,6 @@ impl App {
                 }
             }
         }
+        g.refresh_links();
     }
 }

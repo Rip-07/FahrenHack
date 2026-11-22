@@ -42,7 +42,8 @@ pub(super) enum Active {
     Freeze(Vec<u8>),
     Patch { addr: usize, original: Vec<u8> },
     /// Code injection: the site jumps into `cave`; `original` is restored when switched off.
-    Inject { site: usize, original: Vec<u8>, cave: usize },
+    /// `links` are the cheat ids whose addresses the cave reads (`{addr:ID}`).
+    Inject { site: usize, original: Vec<u8>, cave: usize, links: Vec<String> },
 }
 
 impl Active {
@@ -62,6 +63,8 @@ pub(super) enum Unresolved {
     Waiting,
     Missing,
     Invalid,
+    /// `Item` locator: the item is not in the inventory right now.
+    Absent,
 }
 
 impl Unresolved {
@@ -71,6 +74,7 @@ impl Unresolved {
             Unresolved::Waiting => "waiting",
             Unresolved::Missing => "missing",
             Unresolved::Invalid => "invalid",
+            Unresolved::Absent => "waiting",
         }
     }
 
@@ -80,6 +84,7 @@ impl Unresolved {
             Unresolved::Waiting => "Адрес пока недоступен: загрузите сохранение и войдите в игру",
             Unresolved::Missing => "Сигнатура не найдена: профиль не подходит к этой версии игры",
             Unresolved::Invalid => "Ошибка в описании чита",
+            Unresolved::Absent => "Этого предмета сейчас нет в инвентаре: подберите хотя бы один",
         }
     }
 }
@@ -159,16 +164,20 @@ impl GameSession {
     }
 
     pub(super) fn restore_patches(&mut self) {
-        for active in std::mem::take(&mut self.active).into_values() {
-            match active {
-                Active::Patch { addr, original } => {
-                    self.proc.write(addr, &original);
-                }
-                Active::Inject { site, original, .. } => {
-                    self.proc.write(site, &original);
-                }
-                Active::Freeze(_) => {}
-            }
+        let ids: Vec<String> = self.active.keys().cloned().collect();
+        for id in ids {
+            self.effect_off(&id);
+        }
+    }
+
+    /// A frozen flag (e.g. "invincible") is written back to the profile's `off_value`
+    /// when released, so the game is not left with the cheat's value.
+    fn release_freeze(&mut self, id: &str) {
+        let Some(def) = self.def(id).cloned() else { return };
+        let Some(off) = def.off_value.as_deref() else { return };
+        let Ok(bytes) = self.vtype(&def).encode(off) else { return };
+        if let Ok(addr) = self.resolve(id) {
+            self.proc.write(addr, &bytes);
         }
     }
 
@@ -211,9 +220,12 @@ impl GameSession {
             }
         };
         let cave_code = inject::assemble(&parts, site, *size, &original, cave)?;
+        let links = inject::links(&parts);
         if let Some(p) = param {
             self.proc.write(cave + inject::PARAM_OFFSET, p);
         }
+        // Linked addresses go in before the jump, like the parameter.
+        self.write_links(cave, &links);
         if !self.proc.write(cave, &cave_code) {
             return Err("Не удалось записать код инъекции".into());
         }
@@ -222,8 +234,31 @@ impl GameSession {
             return Err("Не удалось изменить код игры".into());
         }
         self.active
-            .insert(def.id.clone(), Active::Inject { site, original, cave });
+            .insert(def.id.clone(), Active::Inject { site, original, cave, links });
         Ok(())
+    }
+
+    /// Writes the current address of each linked cheat (0 if unknown) into the cave slots.
+    fn write_links(&mut self, cave: usize, links: &[String]) {
+        for (k, id) in links.iter().enumerate() {
+            let addr = self.resolve(id).unwrap_or(0) as u64;
+            self.proc.write(cave + inject::LINK_OFFSET + 8 * k, &addr.to_le_bytes());
+        }
+    }
+
+    /// Keeps `{addr:ID}` slots of active injections current (objects move on area loads).
+    pub(super) fn refresh_links(&mut self) {
+        let caves: Vec<(usize, Vec<String>)> = self
+            .active
+            .values()
+            .filter_map(|a| match a {
+                Active::Inject { cave, links, .. } if !links.is_empty() => Some((*cave, links.clone())),
+                _ => None,
+            })
+            .collect();
+        for (cave, links) in caves {
+            self.write_links(cave, &links);
+        }
     }
 
     /// Switches any active effect of a cheat off, restoring patched code.
@@ -237,7 +272,10 @@ impl GameSession {
                 self.proc.write(site, &original);
                 true
             }
-            Some(Active::Freeze(_)) => true,
+            Some(Active::Freeze(_)) => {
+                self.release_freeze(id);
+                true
+            }
             None => false,
         }
     }
@@ -311,6 +349,30 @@ impl GameSession {
         site.ok_or(Unresolved::Missing)
     }
 
+    /// Signature (+ optional RIP-relative displacement) + add, then a pointer chain.
+    fn aob_chain(
+        &mut self,
+        key: &str,
+        module: Option<&str>,
+        pattern: &str,
+        rip: Option<[usize; 2]>,
+        add: i64,
+        offsets: &[String],
+    ) -> Result<usize, Unresolved> {
+        let site = self.aob_site(key, module, pattern)?;
+        let mut addr = site as i64;
+        if let Some([disp, len]) = rip {
+            let d = self.proc.read_u32(site + disp).ok_or(Unresolved::Waiting)? as i32;
+            addr = site as i64 + len as i64 + d as i64;
+        }
+        let mut addr = (addr + add) as usize;
+        for o in offsets {
+            let off = pointer::parse_hex(o).ok_or(Unresolved::Invalid)?;
+            addr = (self.proc.read_ptr(addr).ok_or(Unresolved::Waiting)? as i64 + off) as usize;
+        }
+        Ok(addr)
+    }
+
     /// Address of the cheat's value (or code patch site) in this session.
     pub(super) fn resolve(&mut self, id: &str) -> Result<usize, Unresolved> {
         let loc = self.def(id).ok_or(Unresolved::Invalid)?.locator.clone();
@@ -325,20 +387,33 @@ impl GameSession {
                 rip,
                 add,
                 offsets,
+            } => self.aob_chain(id, module.as_deref(), &pattern, rip, add, &offsets),
+            Locator::Item {
+                module,
+                pattern,
+                rip,
+                add,
+                offsets,
+                item,
+                id_at,
+                id: item_id,
+                field,
             } => {
-                let site = self.aob_site(id, module.as_deref(), &pattern)?;
-                let mut addr = site as i64;
-                if let Some([disp, len]) = rip {
-                    let d = self.proc.read_u32(site + disp).ok_or(Unresolved::Waiting)? as i32;
-                    addr = site as i64 + len as i64 + d as i64;
+                let list = self.aob_chain(id, module.as_deref(), &pattern, rip, add, &offsets)?;
+                let hex = |s: &str| pointer::parse_hex(s).ok_or(Unresolved::Invalid);
+                let (item_off, id_off, field_off) = (hex(&item)?, hex(&id_at)?, hex(&field)?);
+                let want = u32::from_str_radix(item_id.trim().trim_start_matches("0x"), 16)
+                    .map_err(|_| Unresolved::Invalid)?;
+                let array = self.proc.read_ptr(list + 0x10).ok_or(Unresolved::Waiting)?;
+                let size = self.proc.read_u32(list + 0x18).ok_or(Unresolved::Waiting)? as usize;
+                for i in 0..size.min(4096) {
+                    let Some(elem) = self.proc.read_ptr(array + 0x20 + 8 * i) else { continue };
+                    let Some(obj) = self.proc.read_ptr((elem as i64 + item_off) as usize) else { continue };
+                    if obj != 0 && self.proc.read_u32((obj as i64 + id_off) as usize) == Some(want) {
+                        return Ok((obj as i64 + field_off) as usize);
+                    }
                 }
-                let mut addr = (addr + add) as usize;
-                for o in &offsets {
-                    let off = pointer::parse_hex(o).ok_or(Unresolved::Invalid)?;
-                    addr = (self.proc.read_ptr(addr).ok_or(Unresolved::Waiting)? as i64 + off)
-                        as usize;
-                }
-                Ok(addr)
+                Err(Unresolved::Absent)
             }
             Locator::Patch {
                 module,

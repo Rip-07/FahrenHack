@@ -1,6 +1,6 @@
 [package]
 name = "fahrenhack"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Open-source trainer for single-player PC games: console-style UI, ready game profiles, phone remote over LAN"
 license = "MIT"

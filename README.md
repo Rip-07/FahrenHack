@@ -15,7 +15,7 @@ Cheats for single-player PC games in one console-style app: ready game profiles,
 ## Features
 
 - **Game library**: tiles with covers from your local Steam cache (not shipped with the project); shows which games are installed and running and starts them through Steam.
-- **Ready profiles**: Resident Evil 4 (2023) and Schedule I (experimental).
+- **Ready profiles**: Resident Evil 4 (2023) and Schedule I (experimental). In Resident Evil 4 most cheats work at once, with no setup: invincibility, ignore hits, health, ammo, knife, items, one-hit kill, damage multiplier, no recoil, perfect accuracy, fast reload, game speed, pesetas, spinels and tokens.
 - **Auto-attach**: FahrenHack connects by itself when a game with a profile starts.
 - **Guided setup**: each cheat is found once on your game version in 1–2 minutes; a pointer scan then keeps it working after restarts.
 - **Cheat controls**: switches, Apply buttons, numbers with − / +, sliders for multipliers, option lists, two hotkeys per cheat (up / down), tooltips, collapsible categories and pinned cheats.
@@ -91,7 +91,7 @@ powershell -ExecutionPolicy Bypass -File tools\window-check.ps1
 | `src/window.rs` | WebView2 window (tao + wry) |
 | `src/ui/` | UI for the window and the phone |
 | `games/` | built-in game profiles |
-| `tools/` | test game, end-to-end test, window check |
+| `tools/` | test game, end-to-end test, window check, `re-probe` (research tool for writing profiles: hardware breakpoints, disassembly, RE Engine type database) |
 | `AGENTS.md`, `docs/STATUS.md` | notes for coding agents and the current project status |
 
 ## License
@@ -109,7 +109,7 @@ MIT — see [LICENSE](LICENSE). Game and company names belong to their owners an
 ### Возможности
 
 - **Библиотека игр**: плитки с обложками из вашего локального кэша Steam (в проект они не входят); видно, какие игры установлены и запущены, можно запустить игру через Steam.
-- **Готовые профили**: Resident Evil 4 (2023) и Schedule I (экспериментальный).
+- **Готовые профили**: Resident Evil 4 (2023) и Schedule I (экспериментальный). В Resident Evil 4 большинство читов работает сразу, без настройки: неуязвимость, игнорирование ударов, здоровье, патроны, нож, предметы, убийство с одного удара, множитель урона, без отдачи, идеальная точность, быстрая перезарядка, скорость игры, песеты, шпинели и жетоны.
 - **Автоподключение**: FahrenHack сам подключается, когда запускается игра с профилем.
 - **Мастер настройки**: каждый чит один раз находится на вашей версии игры за 1–2 минуты, а поиск указателей сохраняет его на будущие запуски.
 - **Элементы читов**: переключатели, кнопки «Применить», числа с «−» и «+», ползунки для множителей, списки вариантов, по две клавиши на чит («больше» и «меньше»), подсказки, сворачиваемые категории и закреплённые читы.
