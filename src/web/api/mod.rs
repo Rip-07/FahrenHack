@@ -43,6 +43,7 @@ pub(super) fn router(app: Shared) -> Router<Shared> {
         .route("/settings", put(put_settings))
         .route("/token/reset", post(reset_token))
         .route("/open-data", post(open_data))
+        .route("/support", post(open_support))
         .route("/qr", get(qr))
         .route("/art/{game}/{kind}", get(art))
         .layer(middleware::from_fn_with_state(app, auth))
@@ -290,6 +291,16 @@ async fn reset_token(State(app): State<Shared>) -> ApiResult {
     Ok(Json(
         json!({"token": a.settings.token, "lan_url": a.lan_url()}),
     ))
+}
+
+/// Project's Ko-fi page (also in `.github/FUNDING.yml`).
+const SUPPORT_URL: &str = "https://ko-fi.com/fahrentech";
+
+/// The desktop window cannot show external sites, so the page opens in the default browser.
+/// The URL is fixed here: the API never opens addresses sent by the client.
+async fn open_support() -> ApiResult {
+    steam::open(SUPPORT_URL).map_err(bad)?;
+    ok()
 }
 
 async fn open_data(State(app): State<Shared>) -> ApiResult {

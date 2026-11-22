@@ -66,7 +66,7 @@ function sfx(kind) {
 // ---------------------------------------------------------------- focus & navigation
 function focusables(root) {
   const scope = root || (M ? $('#modal') : document);
-  return $$('button:not([disabled]):not([tabindex="-1"]), input:not([disabled]), select:not([disabled]), [tabindex="0"]', scope)
+  return $$('button:not([disabled]):not([tabindex="-1"]), a[data-act], input:not([disabled]), select:not([disabled]), [tabindex="0"]', scope)
     .filter(el => {
       const r = el.getBoundingClientRect();
       return r.width > 0 && r.height > 0 && !el.closest('.hide');
@@ -515,7 +515,11 @@ views.settings = {
         <div class="brand big"><img src="/logo.svg" alt=""><span>Fahren<b>Hack</b></span></div>
         <p>Версия <span id="ver"></span> · открытый исходный код, лицензия MIT.</p>
         <p class="dim">Только для одиночных игр. Не используйте в онлайн-режимах и в играх с античитом: за это блокируют аккаунты. FahrenHack не связан с разработчиками и издателями игр.</p>
-        <div class="mrow"><button class="btn sm" data-act="open-data" data-k="s-data">${icon('folder')}Папка данных</button></div>
+        <p>Нравится FahrenHack? Поддержите разработку на Ko-fi.</p>
+        <div class="mrow">
+          <a class="btn sm kofi-btn" href="https://ko-fi.com/fahrentech" target="_blank" rel="noopener" data-act="kofi" data-k="s-kofi">${icon('cup')}Поддержать на Ko-fi</a>
+          <button class="btn sm" data-act="open-data" data-k="s-data">${icon('folder')}Папка данных</button>
+        </div>
       </div>
     </div></section>`;
   },
@@ -983,6 +987,12 @@ const ACTIONS = Object.assign({
     refresh();
   },
   'open-data': () => act(() => api('/open-data', 'POST')),
+  // The desktop window cannot open external sites: ask the app to open the default browser.
+  // On a phone the link opens in a new browser tab.
+  'kofi': el => {
+    if (DESKTOP) act(() => api('/support', 'POST'), 'Открываю Ko-fi в браузере…');
+    else window.open(el.href, '_blank', 'noopener');
+  },
 }, wizardActions);
 
 document.addEventListener('click', e => {

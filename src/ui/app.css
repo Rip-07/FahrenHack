@@ -110,6 +110,15 @@ body:not(.pad) .pad-only { display: none; }
   white-space: nowrap; overflow: hidden;
 }
 .gchip .t { overflow: hidden; text-overflow: ellipsis; }
+.kofi {
+  display: flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 999px;
+  background: rgba(255, 94, 91, .14); border: 1px solid rgba(255, 94, 91, .45);
+  color: #ffb4b2; font: 600 13px var(--f-hd); text-decoration: none; white-space: nowrap;
+}
+.kofi .ic { width: 17px; height: 17px; }
+.kofi:hover { background: rgba(255, 94, 91, .24); color: #fff; }
+.btn.kofi-btn { background: #ff5e5b; border-color: transparent; color: #fff; text-decoration: none; }
+.btn.kofi-btn:hover { background: #ff7774; }
 .gchip .dot { width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--dim); }
 .gchip.on { color: var(--fg); border-color: rgba(70, 221, 156, .35); }
 .gchip.on .dot { background: var(--ok); box-shadow: 0 0 10px var(--ok); animation: pulse 2s infinite; }
@@ -417,7 +426,10 @@ select.inp option { background: var(--navy); }
   #tabs button.on { background: transparent; color: var(--teal2); }
   #tabs button.on::after { display: none; }
   .tabhint, #clock, #hints { display: none; }
-  .gchip { max-width: 46vw; margin-left: auto; }
+  .gchip { max-width: 46vw; }
+  .status { margin-left: auto; gap: 8px; }
+  .kofi { padding: 7px 9px; }
+  .kofi span { display: none; }
   #view { overflow: visible; }
   .view { position: static; padding: 16px 16px 100px; overflow: visible; }
   .home { justify-content: flex-start; gap: 18px; }
