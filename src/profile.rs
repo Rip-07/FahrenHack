@@ -33,6 +33,9 @@ pub struct GameProfile {
     pub notes: String,
     #[serde(default)]
     pub pointer_scan: pointer::Opts,
+    /// Order and icons of cheat categories; categories not listed follow in order of appearance.
+    #[serde(default)]
+    pub categories: Vec<CategoryDef>,
     #[serde(default)]
     pub cheats: Vec<CheatDef>,
     /// Verified pointer chains shipped with the profile: game build -> cheat id -> chains.
@@ -44,13 +47,32 @@ fn default_accent() -> String {
     "#2b4c6f".into()
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CategoryDef {
+    pub name: String,
+    #[serde(default)]
+    pub icon: String,
+}
+
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum Kind {
-    /// Keep the value while the cheat is on.
+    /// On/off switch: keeps the value (or the code patch) while on.
     Freeze,
-    /// Write the value once per press.
+    /// "Apply" button: writes the value once per press.
     Set,
+    /// Game value edited in place with − / + (step) or typed in.
+    Number,
+    /// Setting from `min` to `max`; `off_value` switches the cheat off (multipliers).
+    Slider,
+    /// One of `options`, written on apply (e.g. a weapon to add).
+    Select,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SelectOption {
+    pub label: String,
+    pub value: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -65,16 +87,58 @@ pub struct CheatDef {
     pub icon: String,
     pub kind: Kind,
     pub vtype: VType,
-    /// Default value. For `freeze`, `null` means "keep the value it had when switched on".
+    /// Default value. For `freeze`, `null` means "keep the value it had when switched on";
+    /// for `slider`/`select`, the initial setting.
     #[serde(default)]
     pub value: Option<String>,
+    /// Toggle / apply, or "increase" for number, slider and select.
     #[serde(default)]
     pub hotkey: Option<String>,
+    /// "Decrease" for number, slider and select.
+    #[serde(default)]
+    pub hotkey_down: Option<String>,
+    /// Shown behind an "i" next to the name.
+    #[serde(default)]
+    pub info: String,
+    /// Shown behind a yellow "!" next to the name: side effects the player should know about.
+    #[serde(default)]
+    pub warn: String,
+    #[serde(default)]
+    pub step: Option<f64>,
+    #[serde(default)]
+    pub min: Option<f64>,
+    #[serde(default)]
+    pub max: Option<f64>,
+    /// Slider value that means "cheat off" (patch removed, nothing frozen).
+    #[serde(default)]
+    pub off_value: Option<String>,
+    #[serde(default)]
+    pub options: Vec<SelectOption>,
     #[serde(default)]
     pub experimental: bool,
     #[serde(default)]
     pub custom: bool,
     pub locator: Locator,
+}
+
+impl CheatDef {
+    pub fn step(&self) -> f64 {
+        self.step.filter(|s| *s > 0.0).unwrap_or(1.0)
+    }
+
+    /// Clamps a number to `min`/`max`.
+    pub fn clamp(&self, v: f64) -> f64 {
+        let v = self.min.map_or(v, |m| v.max(m));
+        self.max.map_or(v, |m| v.min(m))
+    }
+
+    pub fn is_off_value(&self, value: &str) -> bool {
+        match (&self.off_value, crate::scan::parse_number(value)) {
+            (Some(off), Ok(v)) => crate::scan::parse_number(off).is_ok_and(|o| (o - v).abs() < 1e-9),
+            (Some(off), Err(_)) => off.trim() == value.trim(),
+            (None, _) => false,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -117,6 +181,17 @@ pub enum Locator {
         offset: i64,
         bytes: String,
     },
+    /// Code injection: `size` bytes at the signature (+offset) become a jump into a code cave
+    /// allocated near the module. `code` is hex bytes with placeholders, see `crate::inject`.
+    Inject {
+        #[serde(default)]
+        module: Option<String>,
+        pattern: String,
+        #[serde(default)]
+        offset: i64,
+        size: usize,
+        code: String,
+    },
     /// Found once on the user's machine by a guided search, then kept as pointer chains.
     Calibrate {
         #[serde(default)]
@@ -140,6 +215,7 @@ impl GameProfile {
             accent: default_accent(),
             notes: "Для этой игры нет готового профиля. Найдите значения во вкладке «Сканер» и добавьте их кнопкой «В читы».".into(),
             pointer_scan: pointer::Opts::default(),
+            categories: vec![],
             cheats: vec![],
             builds: HashMap::new(),
         }
@@ -264,11 +340,25 @@ mod tests {
             let mut ids = std::collections::HashSet::new();
             for c in &g.cheats {
                 assert!(ids.insert(&c.id), "{}: duplicate cheat id {}", g.id, c.id);
-                if let Some(h) = &c.hotkey {
+                for h in c.hotkey.iter().chain(c.hotkey_down.iter()) {
                     assert!(crate::hotkey::Hotkey::parse(h).is_some(), "{}: bad hotkey {h}", c.id);
                 }
-                if let Some(v) = &c.value {
+                for v in c.value.iter().chain(c.off_value.iter()) {
                     assert!(c.vtype.encode(v).is_ok(), "{}: bad value {v}", c.id);
+                }
+                for o in &c.options {
+                    assert!(c.vtype.encode(&o.value).is_ok(), "{}: bad option {}", c.id, o.value);
+                }
+                if c.kind == Kind::Select {
+                    assert!(!c.options.is_empty(), "{}: select without options", c.id);
+                }
+                if c.kind == Kind::Slider {
+                    assert!(c.min.is_some() && c.max.is_some(), "{}: slider needs min and max", c.id);
+                }
+                if let Locator::Inject { code, size, pattern, .. } = &c.locator {
+                    assert!(*size >= 5, "{}: inject needs at least 5 bytes for the jump", c.id);
+                    assert!(crate::aob::parse(pattern).is_some(), "{}: bad pattern", c.id);
+                    assert!(crate::inject::parse(code).is_some(), "{}: bad inject code", c.id);
                 }
             }
         }

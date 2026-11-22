@@ -11,7 +11,8 @@ use windows_sys::Win32::System::Diagnostics::ToolHelp::{
     TH32CS_SNAPTHREAD, THREADENTRY32,
 };
 use windows_sys::Win32::System::Memory::{
-    VirtualProtectEx, VirtualQueryEx, MEMORY_BASIC_INFORMATION, MEM_COMMIT, MEM_MAPPED,
+    VirtualAllocEx, VirtualProtectEx, VirtualQueryEx, MEMORY_BASIC_INFORMATION, MEM_COMMIT, MEM_FREE, MEM_MAPPED,
+    MEM_RESERVE,
     PAGE_EXECUTE_READ, PAGE_EXECUTE_READWRITE, PAGE_EXECUTE_WRITECOPY, PAGE_GUARD, PAGE_READONLY,
     PAGE_READWRITE, PAGE_WRITECOPY,
 };
@@ -179,6 +180,46 @@ impl Process {
     pub fn read_u32(&self, addr: usize) -> Option<u32> {
         let mut b = [0u8; 4];
         self.read(addr, &mut b).then(|| u32::from_le_bytes(b))
+    }
+
+    /// Allocates executable memory within ±1.75 GB of `near`, so a 5-byte `jmp rel32` reaches it.
+    /// The memory is never freed: a game thread might still be running inside it.
+    pub fn alloc_near(&self, near: usize, size: usize) -> Option<usize> {
+        const GRANULARITY: usize = 0x10000;
+        const RANGE: usize = 0x7000_0000;
+        let lo = near.saturating_sub(RANGE).max(0x10000);
+        let hi = near.saturating_add(RANGE);
+        let mut addr = lo;
+        unsafe {
+            while addr < hi {
+                let mut mbi: MEMORY_BASIC_INFORMATION = zeroed();
+                if VirtualQueryEx(self.handle, addr as *const c_void, &mut mbi, size_of::<MEMORY_BASIC_INFORMATION>()) == 0 {
+                    return None;
+                }
+                let base = mbi.BaseAddress as usize;
+                let end = base.saturating_add(mbi.RegionSize);
+                if mbi.State == MEM_FREE {
+                    let start = (base + GRANULARITY - 1) & !(GRANULARITY - 1);
+                    if start + size <= end && start + size <= hi {
+                        let p = VirtualAllocEx(
+                            self.handle,
+                            start as *const c_void,
+                            size,
+                            MEM_COMMIT | MEM_RESERVE,
+                            PAGE_EXECUTE_READWRITE,
+                        );
+                        if !p.is_null() {
+                            return Some(p as usize);
+                        }
+                    }
+                }
+                if end <= addr {
+                    return None;
+                }
+                addr = end;
+            }
+        }
+        None
     }
 
     pub fn read_u64(&self, addr: usize) -> Option<u64> {

@@ -33,23 +33,23 @@ fn hotkey_loop(app: Shared) {
         }
         let Some(g) = a.game.as_ref() else { continue };
         let gid = g.profile.id.clone();
-        let keys: Vec<(String, String, Hotkey)> = g
-            .profile
-            .cheats
-            .iter()
-            .filter_map(|c| {
-                Some((
-                    c.id.clone(),
-                    c.name.clone(),
-                    Hotkey::parse(&a.settings.cheat_hotkey(&gid, c)?)?,
-                ))
-            })
-            .collect();
-        for (id, name, hk) in keys {
+        // (cheat id, name, key, +1 = toggle / increase, -1 = decrease)
+        let mut keys: Vec<(String, String, Hotkey, i32)> = Vec::new();
+        for c in &g.profile.cheats {
+            let up = a.settings.cheat_hotkey(&gid, c).and_then(|h| Hotkey::parse(&h));
+            let down = a.settings.cheat_hotkey_down(&gid, c).and_then(|h| Hotkey::parse(&h));
+            if let Some(hk) = up {
+                keys.push((c.id.clone(), c.name.clone(), hk, 1));
+            }
+            if let Some(hk) = down {
+                keys.push((c.id.clone(), c.name.clone(), hk, -1));
+            }
+        }
+        for (id, name, hk, dir) in keys {
             let down = hk.pressed();
-            let was = prev.insert(id.clone(), down).unwrap_or(false);
+            let was = prev.insert(format!("{id}\u{1}{dir}"), down).unwrap_or(false);
             if down && !was {
-                match a.toggle(&id) {
+                match a.step(&id, dir) {
                     Ok(on) => println!("[hotkey] {name}{}", if on { ": ВКЛ" } else { "" }),
                     Err(e) => println!("[hotkey] {name}: {e}"),
                 }

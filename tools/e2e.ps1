@@ -27,11 +27,21 @@ $profile = @'
 {
   "id": "dummy", "title": "Dummy Game", "subtitle": "test", "processes": ["dummygame2.exe"], "accent": "#2f8f6a",
   "pointer_scan": { "max_depth": 4, "max_offset": 4096 },
+  "categories": [ { "name": "Player", "icon": "user" }, { "name": "Weapons", "icon": "gun" } ],
   "cheats": [
     { "id": "hp", "category": "Player", "icon": "heart", "name": "HP", "kind": "freeze", "vtype": "i32", "value": null, "hotkey": "F9",
       "locator": { "type": "calibrate", "mode": "unknown", "steps": ["snapshot", "decreased"] } },
-    { "id": "ammo", "category": "Weapons", "icon": "ammo", "name": "Ammo", "kind": "set", "vtype": "i32", "value": "999",
-      "locator": { "type": "calibrate", "mode": "exact" } }
+    { "id": "ammo", "category": "Weapons", "icon": "ammo", "name": "Ammo", "kind": "number", "vtype": "i32",
+      "min": 0, "max": 999, "step": 1, "hotkey": "F7", "hotkey_down": "SHIFT+F7",
+      "locator": { "type": "calibrate", "mode": "exact" } },
+    { "id": "god", "category": "Player", "icon": "shield", "name": "No damage", "kind": "freeze", "vtype": "i32", "info": "test",
+      "locator": { "type": "inject", "pattern": "F0 29 51 18 C3 CC", "size": 5, "code": "C3" } },
+    { "id": "dmg", "category": "Player", "icon": "skull", "name": "Damage per hit", "kind": "slider", "vtype": "i32",
+      "min": 0, "max": 50, "step": 1, "off_value": "7", "warn": "test",
+      "locator": { "type": "inject", "pattern": "F0 29 51 18 C3 CC", "size": 5, "code": "8B 15 {param} F0 29 51 18 C3" } },
+    { "id": "dmgsel", "category": "Player", "icon": "skull", "name": "Damage preset", "kind": "select", "vtype": "i32",
+      "options": [ { "label": "light", "value": "1" }, { "label": "heavy", "value": "100" } ],
+      "locator": { "type": "inject", "pattern": "F0 29 51 18 C3 CC", "size": 5, "code": "8B 15 {param} F0 29 51 18 C3" } }
   ]
 }
 '@
@@ -95,9 +105,50 @@ try {
   }
   Check ($res.Count -ge 1) "exact search found ammo ($($res.Count) candidate(s))"
   WaitJob (J POST /calib/ammo/bind @{ addr = $res[0].addr; vtype = 'i32' }) | Out-Null
-  J POST /cheats/ammo/toggle | Out-Null
+
+  # Number: type a value, step up and down, clamp to max
+  J POST /cheats/ammo/value @{ value = '50' } | Out-Null
   Start-Sleep 1.2
-  Check ((Ammo) -eq 999) "set writes ammo = 999 (game shows $(Ammo))"
+  Check ((Ammo) -eq 50) "number writes ammo = 50 (game shows $(Ammo))"
+  J POST /cheats/ammo/step @{ dir = 1 } | Out-Null; J POST /cheats/ammo/step @{ dir = 1 } | Out-Null; J POST /cheats/ammo/step @{ dir = -1 } | Out-Null
+  Start-Sleep 1.2
+  Check ((Ammo) -eq 51 -or (Ammo) -eq 50) "number steps +1 +1 -1 (game shows $(Ammo))"
+  J POST /cheats/ammo/value @{ value = '5000' } | Out-Null
+  Start-Sleep 1.2
+  Check ((Ammo) -eq 999) "number is clamped to max 999 (game shows $(Ammo))"
+
+  # Code injection on take_damage(); HP freeze must be off so damage is visible
+  J POST /cheats/hp/toggle | Out-Null
+  function Dmg { Start-Sleep 2.3; $l = @(Get-Content $out -Tail 2); [int]([regex]::Match($l[0], 'hp=(-?\d+)').Groups[1].Value) - [int]([regex]::Match($l[1], 'hp=(-?\d+)').Groups[1].Value) }
+  Check ((Dmg) -eq 7) 'original damage is 7 per tick'
+  $r = J POST /cheats/god/toggle
+  Check ($r.active -and (Dmg) -eq 0) 'inject: no-damage patch stops damage'
+  $conflict = ''; try { J POST /cheats/dmg/value @{ value = '20' } | Out-Null } catch { $conflict = $_.ErrorDetails.Message }
+  Check ($conflict -match 'No damage') "two patches of the same code are refused ($conflict)"
+  $r = J POST /cheats/god/toggle
+  Check (-not $r.active -and (Dmg) -eq 7) 'inject off restores the original code'
+  $r = J POST /cheats/dmg/value @{ value = '20' }
+  Check ($r.active -and (Dmg) -eq 20) 'slider: injected code reads the parameter (20 per tick)'
+  J POST /cheats/dmg/step @{ dir = 1 } | Out-Null
+  Check ((Dmg) -eq 21) 'slider step changes the live parameter (21 per tick)'
+  $r = J POST /cheats/dmg/value @{ value = '7' }
+  Check (-not $r.active -and (Dmg) -eq 7) 'slider at off_value removes the patch'
+  $r = J POST /cheats/dmgsel/step @{ dir = 1 }
+  Check ($r.active -and (Dmg) -eq 1) 'select: first option applied by "next" (1 per tick)'
+  J POST /cheats/dmgsel/step @{ dir = 1 } | Out-Null
+  Check ((Dmg) -eq 100) 'select: next option (100 per tick)'
+  J POST /cheats/off | Out-Null
+  Check ((Dmg) -eq 7) 'all off restores the original code'
+  $s = J GET /state
+  $dmgC = $s.cheats | Where-Object id -eq 'dmg'
+  Check ($dmgC.value -eq '7' -and $dmgC.kind -eq 'slider' -and $dmgC.warn -eq 'test') 'slider position is remembered and exposed'
+
+  $p = J POST /games/dummy/cheats/god/pin
+  $godC = (J GET /state).cheats | Where-Object id -eq 'god'
+  Check ($p.pinned -and $godC.pinned) 'pin is saved'
+  J PUT /games/dummy/cheats/ammo @{ value = ''; hotkey = 'F8'; hotkey_down = 'CTRL+SHIFT+F8' } | Out-Null
+  $ammoC = (J GET /state).cheats | Where-Object id -eq 'ammo'
+  Check ($ammoC.hotkey -eq 'F8' -and $ammoC.hotkey_down -eq 'CTRL+SHIFT+F8') 'second hotkey is saved'
 
   # Restart the game: cheats must resolve from saved chains without calibration
   Stop-Process -Id $g.Id; Start-Sleep 1.5

@@ -8,6 +8,7 @@ use crate::mem;
 use crate::profile::{self, CheatDef, GameProfile, Kind, Locator};
 use crate::steam;
 
+use super::settings::Settings;
 use super::App;
 
 impl App {
@@ -34,15 +35,11 @@ impl App {
         };
         let gid = g.profile.id.clone();
         let defs = g.profile.cheats.clone();
-        let extra: Vec<(Option<String>, Option<String>)> = defs
+        let extra: Vec<Value> = defs
             .iter()
-            .map(|d| {
-                (
-                    self.settings.cheat_value(&gid, d),
-                    self.settings.cheat_hotkey(&gid, d),
-                )
-            })
+            .map(|d| cheat_static(d, &self.settings, &gid))
             .collect();
+        let categories = g.profile.categories.clone();
         let g = self.game.as_mut().unwrap();
         out["attached"] = json!({
             "pid": g.proc.pid,
@@ -56,10 +53,10 @@ impl App {
         let cheats: Vec<Value> = defs
             .iter()
             .zip(extra)
-            .map(|(d, (value, hotkey))| {
+            .map(|(d, mut item)| {
                 let r = g.resolve(&d.id);
                 let vt = g.vtype(d);
-                let patch = matches!(d.locator, Locator::Patch { .. });
+                let patch = matches!(d.locator, Locator::Patch { .. } | Locator::Inject { .. });
                 let current = match r {
                     Ok(a) if !patch => g.read_bytes(a, vt.size()).map(|b| vt.fmt(&b)),
                     _ => None,
@@ -82,27 +79,17 @@ impl App {
                     }
                     _ => Value::Null,
                 };
-                json!({
-                    "id": d.id,
-                    "name": d.name,
-                    "category": d.category,
-                    "description": d.description,
-                    "icon": d.icon,
-                    "kind": cheat_kind(d),
-                    "vtype": vt,
-                    "value": value,
-                    "hotkey": hotkey,
-                    "experimental": d.experimental,
-                    "custom": d.custom,
-                    "status": match r { Ok(_) => "ready", Err(e) => e.code() },
-                    "active": g.active.contains_key(&d.id),
-                    "current": current,
-                    "addr": r.ok().map(|a| format!("{a:X}")),
-                    "calibration": calibration,
-                })
+                item["vtype"] = json!(vt);
+                item["status"] = json!(match r { Ok(_) => "ready", Err(e) => e.code() });
+                item["active"] = json!(g.active.contains_key(&d.id));
+                item["current"] = json!(current);
+                item["addr"] = json!(r.ok().map(|a| format!("{a:X}")));
+                item["calibration"] = calibration;
+                item
             })
             .collect();
         out["cheats"] = Value::Array(cheats);
+        out["categories"] = json!(categories);
         out
     }
 
@@ -148,30 +135,45 @@ impl App {
             "running": g.processes.iter().any(|p| procs.contains(&p.to_lowercase())),
             "attached": attached == Some(g.id.as_str()),
             "art": { "cover": art("cover"), "hero": art("hero"), "logo": art("logo") },
-            "cheats": cheats.iter().map(|c| json!({
-                "id": c.id,
-                "name": c.name,
-                "category": c.category,
-                "description": c.description,
-                "icon": c.icon,
-                "kind": cheat_kind(c),
-                "vtype": c.vtype,
-                "experimental": c.experimental,
-                "custom": c.custom,
-                "value": self.settings.cheat_value(&g.id, c),
-                "hotkey": self.settings.cheat_hotkey(&g.id, c),
-            })).collect::<Vec<_>>(),
+            "categories": g.categories,
+            "cheats": cheats.iter().map(|c| cheat_static(c, &self.settings, &g.id)).collect::<Vec<_>>(),
         })
     }
 }
 
+/// Everything about a cheat that does not need the running game.
+fn cheat_static(c: &CheatDef, settings: &Settings, game: &str) -> Value {
+    json!({
+        "id": c.id,
+        "name": c.name,
+        "category": c.category,
+        "description": c.description,
+        "icon": c.icon,
+        "kind": cheat_kind(c),
+        "vtype": c.vtype,
+        "value": settings.cheat_value(game, c),
+        "hotkey": settings.cheat_hotkey(game, c),
+        "hotkey_down": settings.cheat_hotkey_down(game, c),
+        "info": c.info,
+        "warn": c.warn,
+        "step": c.step(),
+        "min": c.min,
+        "max": c.max,
+        "off_value": c.off_value,
+        "options": c.options,
+        "pinned": settings.is_pinned(game, &c.id),
+        "experimental": c.experimental,
+        "custom": c.custom,
+    })
+}
+
 fn cheat_kind(definition: &CheatDef) -> &'static str {
-    if matches!(definition.locator, Locator::Patch { .. }) {
-        "patch"
-    } else {
-        match definition.kind {
-            Kind::Set => "set",
-            Kind::Freeze => "freeze",
-        }
+    match definition.kind {
+        Kind::Number => "number",
+        Kind::Slider => "slider",
+        Kind::Select => "select",
+        Kind::Set => "set",
+        Kind::Freeze if matches!(definition.locator, Locator::Patch { .. } | Locator::Inject { .. }) => "patch",
+        Kind::Freeze => "freeze",
     }
 }

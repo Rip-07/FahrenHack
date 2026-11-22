@@ -20,6 +20,13 @@ struct World {
 
 static WORLD: AtomicPtr<World> = AtomicPtr::new(std::ptr::null_mut());
 
+/// Separate function so tests can patch it with a code injection
+/// (compiles to `lock sub [rcx+18h], edx ; ret`).
+#[inline(never)]
+fn take_damage(p: &Player, dmg: i32) {
+    p.hp.fetch_sub(dmg, Ordering::SeqCst);
+}
+
 fn main() {
     let w = Box::new(World {
         pad: [0; 0x40],
@@ -31,7 +38,7 @@ fn main() {
         let w = unsafe { &*black_box(WORLD.load(Ordering::SeqCst)) };
         println!("hp={} ammo={}", w.player.hp.load(Ordering::SeqCst), w.player.ammo.load(Ordering::SeqCst));
         tick += 1;
-        w.player.hp.fetch_sub(7, Ordering::SeqCst);
+        take_damage(&w.player, black_box(7));
         if tick % 3 == 0 {
             let a = w.player.ammo.load(Ordering::SeqCst);
             w.player.ammo.store(if a <= 1 { 30 } else { a - 1 }, Ordering::SeqCst);

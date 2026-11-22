@@ -7,6 +7,7 @@
 mod aob;
 mod app;
 mod hotkey;
+mod inject;
 mod logo;
 mod mem;
 mod pointer;
