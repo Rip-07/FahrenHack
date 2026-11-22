@@ -22,7 +22,7 @@ FahrenHack спроектирован так, чтобы ничего из эт�
   - Bungie v. AimJunkies — Destiny 2 ([TorrentFreak](https://torrentfreak.com/court-denies-cheat-seller-aimjunkies-a-new-trial-affirms-bungies-4-3-million-win-240902/));
   - Activision v. EngineOwning — Call of Duty ([TorrentFreak](https://torrentfreak.com/activision-wins-14-5m-judgment-after-engineowning-cheat-makers-bailed-out-240529/));
   - Take-Two — GTA Online ([PC Gamer](https://www.pcgamer.com/au/us-judge-blocks-tools-that-help-gta-online-players-cheat)).
-- **Оценка:** исков против авторов офлайн-трейнеров (WeMod, FLiNG и т.п.) найти не удалось.
+- **Оценка:** исков против авторов офлайн-трейнеров, коммерческих и бесплатных, найти не удалось.
 
 ## 2. DMCA §1201 (обход технических средств защиты)
 
@@ -43,7 +43,7 @@ FahrenHack спроектирован так, чтобы ничего из эт�
 - [Acceptable Use Policies](https://docs.github.com/en/site-policy/acceptable-use-policies/github-acceptable-use-policies) читы прямо не запрещают. Запрещены обход лицензий и распространение вредоносного ПО.
 - В архиве уведомлений [github/dmca](https://github.com/github/dmca):
   - есть уведомления против memory-читов для онлайн-игр, например [PUBG Mobile](https://github.com/github/dmca/blob/master/2023/07/2023-07-24-pubg-mobile.md);
-  - есть уведомления WeMod против «разблокировщиков» его платной версии ([2023](https://github.com/github/dmca/blob/master/2023/02/2023-02-14-wemod.md));
+  - есть уведомления коммерческого сервиса трейнеров против «разблокировщиков» его платной подписки (2023, 2024);
   - уведомлений Capcom против трейнеров найти не удалось.
 - **Оценка:** GitHub не разбирает обычные претензии по существу. Поэтому даже слабое уведомление может временно скрыть репозиторий. Лучшая защита — чистый репозиторий, по которому легко обосновать встречное уведомление.
 
@@ -56,7 +56,7 @@ FahrenHack спроектирован так, чтобы ничего из эт�
   - писать «official».
 
   FahrenHack показывает обложки только из **вашего локального кэша Steam** и во время работы. В репозиторий они не входят.
-- **WeMod:** не брать его название, логотип, интерфейс и тексты. Идеи (пульт с телефона, профили игр) авторским правом не охраняются, охраняется только конкретная реализация. Код и интерфейс FahrenHack написаны с нуля.
+- **Другие трейнеры:** не брать их названия, логотипы, интерфейс и тексты. Идеи (пульт с телефона, профили игр) авторским правом не охраняются, охраняется только конкретная реализация. Код и интерфейс FahrenHack написаны с нуля.
 - **Логотип FahrenHack** сделан в стиле бренда FahrenTech. Это безопасно, только если **FahrenTech принадлежит вам**. Перед публикацией стоит проверить название «FahrenHack» по базам товарных знаков: [USPTO](https://tmsearch.uspto.gov/), [WIPO Global Brand Database](https://branddb.wipo.int/), ФИПС.
 
 ## 5. Capcom, Steam и достижения
